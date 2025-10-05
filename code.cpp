@@ -1304,7 +1304,6 @@ int main(){
         worldCurvatures.push_back(0);
     }//*/
     //NOTE: isr2 = 1/sqrt(2), sr2 = sqrt(2), I just got tired of typing it in testing
-    duppw=-1;
     {
         std::vector<std::vector<float>> world0={{0,2,0, 0.5,2,0, 2,mkdest(0,1,0,1,0)},//portal, type 0 (arc), linked to world1, index 0, other side = 1, mirror = 0
         {2,4,0, 0,4,0, 0,mkdest(1,0,1,0,1)},//portal, type 1(E2 line), linked to world 0, index 1 (itself), side = 0, mirror = 1
@@ -1326,6 +1325,7 @@ int main(){
         vec3(pl2, pl[0],pl[1]+pr,0);//placing the default facing of the player
         vec3(camRef, pl[0]+1,pl[1],0);
         plp[0] = 1;//setting this to negative 1 mirrors
+		duppw = -1;//signals that the player isn't in a portal
     }//*/
 
 
