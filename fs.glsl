@@ -10,7 +10,7 @@ const float wallthickness=1/18.0;
 const float wallcornershad=1.0/9;
 const float coswallthickness=cos(wallthickness);
 const float coswallcornershad=cos(wallcornershad);
-const float infinity = 1.0/0;
+const float inf = 1.0/0;
 //const vec4 bgcolor=vec4(0,.125,0.498,1);
 const vec4 bgcolor=vec4(0,0,0,1);
 const int cellCount = 211;
@@ -551,13 +551,10 @@ void main(){
                 t = length(sp2*vec3(1,1,0));
                 sp2 /= t;
                 rot = mat3(sp2.x,-sp2.y,0, sp2.y,sp2.x,0, 0,0,1)*rot;
-                {
-                float c = sqrt(k*k + 1);
                 if(type == 2) rot = mat3(t,0,k, 0,1,0, k,0,t)*rot;
                 rot = lm*rot;
                 if(type == 2) rot = mat3(t,0,-k, 0,1,0, -k,0,t)*rot;
                 if(type == 0 && si > 0) rot = mat3(-k,0,-t, 0,1,0, -t,0,-k)*rot;
-                }
                 if(si > 0) rot = am*rot;
                 vec3 cip1, cip2, cip;
                 cip.x = ds;
@@ -567,12 +564,13 @@ void main(){
                     type = int(positions[i + 7])&3;
                     float limit = positions[i + 6];
                     vec3 p1 = vec3(positions[i],positions[i + 1],positions[i + 2]), p2 = vec3(positions[i + 3],positions[i + 4],positions[i + 5]);
-                    float k = innerdot(p1,p2);
+                    k = innerdot(p1,p2);
                     p1 = rot*p1; p2 = rot*p2;
                     float o = sqrt(k*k - p1.z*p1.z + p1.x*p1.x);
                     float tR = (-k + o)/(p1.z - p1.x), itR = 1/tR;
                     float tL = (-k + o)/(p1.z + p1.x), itL = 1/tL;
                     vec3 cipR, cipL;
+                    cipR.y = 0; cipL.y = 0;
                     cipR.x = (tR - itR)*0.5; cipR.z = cipR.x + itR;
                     cipL.x = -(tL - itL)*0.5; cipL.z = cipL.x + tL;
                     bool risvalid = tR > 0 && limit < innerdot(p2,cipR), lisvalid = tL > 0 && limit < innerdot(p2,cipL);
@@ -607,7 +605,7 @@ void main(){
                     k = innerdot(cip1,cip2);
                     float k2 = k*k;
                     float cL = -innerdot(cip,cip2), sL = 1;
-                    if(type == 0){//circle
+                    if(type == 0){
                         cL = (cL - k2)/(1 - k2);
                         sL = 1 - cL*cL;
                     }
@@ -618,7 +616,7 @@ void main(){
                         cL = (cL + k2)/(k2 + 1);
                         sL = cL*cL - 1;
                     }
-                    sL = sqrt(sL) * sign(innerdot(lcross(cip1,cip2),cip))*side*mirror;
+                    sL = safe_sqrt(sL) * sign(innerdot(lcross(cip1,cip2),cip))*side*mirror;
                     if(type == 0){//circle
                         lm = mat3(cL,-sL,0, sL,cL,0, 0,0,1);
                     }
@@ -633,7 +631,8 @@ void main(){
                     if(type > 0) cip1 = -cip1;
                     cip1 = normalize(cip1*vec3(1,1,0));
                     am = mat3(-cip1.x,mirror*-cip1.y,0, mirror*cip1.y,-cip1.x,0, 0,0,side)*side;
-                    //FragColor = vec4(Mod(acosh(cL),1),0,sL,1);
+                    //FragColor = vec4(Mod((cL),1),1,sL,1);
+                    //FragColor = vec4(0*cL,1,sL,1);
                     //FragColor = vec4(-am[1][0],0,am[1][0],1);
                     //d = 0;hitwall = true;
                 }
