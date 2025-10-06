@@ -1,4 +1,4 @@
-//to compile: g++ -O3 -w code.cpp -o code glad.o -lglfw -lGL -lX11 -lpthread -lXrandr -lXi -ldl -lSDL3
+//to compile: g++ -O3 -w code.cpp -o code glad.o -lglfw -lSDL3
 #include  <cstdio>
 #include <iostream>
 #include "glad.h"
@@ -290,6 +290,18 @@ void lorenz(float& x, float& y, double c, double s){
     double t = x*c + y*s;
     y = x*s + y*c;
     x=t;
+}
+
+void lorenzXZ(double m[][3], double c, double s){
+    lorenz(m[0][0],m[0][2],c,s);
+    lorenz(m[1][0],m[1][2],c,s);
+    lorenz(m[2][0],m[2][2],c,s);
+}
+
+void lorenzYZ(double m[][3], double c, double s){
+    lorenz(m[0][1],m[0][2],c,s);
+    lorenz(m[1][1],m[1][2],c,s);
+    lorenz(m[2][1],m[2][2],c,s);
 }
 
 void backOnHyperboloid(float p[]){
@@ -844,7 +856,7 @@ void moveEntity(double dx, double dy, float pos[], float pos2[], float ref[], in
             //[-x  y][-1]   [x]
             //[-y -x][ 0] = [y]
 
-        } else if(iaunit > 0){
+        } else if(iaunit > 0){//s2
             double dc=cos(d),ds=sin(d);
             double rot[3][3];
             double rc,rs,r;
@@ -1083,32 +1095,241 @@ void moveEntity(double dx, double dy, float pos[], float pos2[], float ref[], in
                 }
             }
         }//end of s2
-        if(iaunit < 0){
+        if(iaunit < 0){//h2
+            //EA[0] = -1; EA[1] = 0;
             double dc = exp(d), ds = 1/dc;
             dc = (dc + ds)/2; ds = dc - ds;
             //^cosh and sinh of d, done weird to remove redundant calculations
             double k = innerdot(sp1,sp2);
             double rot[3][3];
-            if(type == 0){
+                if(type > 0){
+                    double tv[3];
+                    copypt(sp1,tv);
+                    copypt(sp2,sp1);
+                    copypt(tv,sp2);
+                }
                 h2matto(sp1,rot);
                 matxpt(rot,sp2);
-                double r = sqrt(k*k - 1);
-                double c = sp2[0]/r, s = sp2[1]/r;
-                rotXY(rot, c,-s);
-                rotXY(rot, EL[0],EL[1]);
+                double r = sqrt(sp2[0]*sp2[0] + sp2[1]*sp2[1]);
+                sp2[0] /= r; sp2[1] /=r;
+                rotXY(rot, sp2[0],-sp2[1]);
+                if(si < 0){
+                    //get pos2r...
+                }
+                switch(type){
+                    case 0:
+                        rotXY(rot, EL[0],EL[1]);
+                        if(si > 0) lorenzXZ(rot,-k,-r);
+                        break;
+                    case 1:
+                        //...
+                        break;
+                    case 2:
+                        lorenzXZ(rot,r,k);
+                        lorenzYZ(rot,EL[0],EL[1]);
+                        lorenzXZ(rot,r,-k);
+                        break;
+                    default:
+                        printf("invalid type\n");
+                }
+                if(si > 0) rotXY(rot,EA[0],EA[1]);
+                double cip1[3], cip2[3], cip[3];
+                cip[0] = ds;
+                int cii = -1;
+                int i = int(paw[*cw]);
+                while(i < (int)paw[*cw + 1]){
+                    double p1[3] = {paw[i],paw[i + 1],paw[i + 2]},
+                    p2[3] = {paw[i + 3],paw[i + 4],paw[i + 5]};
+                    double limit = paw[i + 6];
+                    type = int(paw[i + 7])&3;
+                    k = innerdot(p1,p2);
+                    matxpt(rot,p1);
+                    matxpt(rot,p2);
+                    double o = sqrt(k*k - p1[2]*p1[2] + p1[0]*p1[0]);
+                    double tR = (-k + o)/(p1[2] - p1[0]), itR = 1/tR;
+                    double tL = (-k + o)/(p1[2] + p1[0]), itL = 1/tL;
+                    double cipR[3], cipL[3];
+                    cipR[1] = cipL[1] = 0;
+                    cipR[0] = (tR - itR)/2; cipR[2] = cipR[0] + itR;
+                    cipL[0] = (tL - itL)/2; cipL[2] = cipL[0] + itL;
+                    bool risvalid = tR > 0 && limit < innerdot(p2,cipR);
+                    bool lisvalid = tL > 0 && limit < innerdot(p2,cipL);
+                    if(risvalid && 0 < cipR[0] && cipR[0] < cip[0] && (i != si || (lisvalid && cipL[2] < cipR[2]))){
+                        copypt(cipR,cip);
+                        cii = i;
+                    }
+                    if(lisvalid && 0 < cipL[0] && cipL[0] < cip[0] && (i != si || (risvalid && cipR[2] < cipL[2]))){
+                        copypt(cipL,cip);
+                        cii = i;
+                    }
+                    if(i == cii){
+                        copypt(p1,cip1);
+                        copypt(p2,cip2);
+                    }
+                    i += sizeOfPow;
+                }
+                /*
                 //...
-            }
+                if(cii > 0){
+                    int dat = int(positions[cii + 7]);
+                    type = dat&3;
+                    current_world=(dat>>3)&511;
+                    int di = int(positions[current_world]) + sizeOfpow*(dat>>12)&1023;
+                    sp1 = vec3(positions[di],positions[di + 1],positions[di + 2]);
+                    sp2 = vec3(positions[di + 3],positions[di + 4],positions[di + 5]);
+                    si = di;
+                    float side = 1;
+                    if(((dat>>22)&1)==1) side = -1;
+                    mirror = 1;
+                    if(((dat>>23)&1)==1) mirror = -1;
+                    d -= acosh(cip.z);
+                    k = innerdot(cip1,cip2);
+                    float k2 = k*k;
+                    float cL = -innerdot(cip,cip2), sL = 1;
+                    if(type == 0){//circle
+                        cL = (cL - k2)/(1 - k2);
+                        sL = 1 - cL*cL;
+                    }
+                    if(type == 1){//horocycle
+                        sL = 2*cL - 2;
+                    }
+                    if(type == 2){//hypercycle
+                        cL = (cL + k2)/(k2 + 1);
+                        sL = cL*cL - 1;
+                    }
+                    sL = sqrt(sL) * sign(innerdot(lcross(cip1,cip2),cip))*side*mirror;
+                    if(type == 0){//circle
+                        lm = mat3(cL,-sL,0, sL,cL,0, 0,0,1);
+                    }
+                    if(type == 1){//horocycle
+                        lm = mat3(1 - sL*sL/2,-sL,-sL*sL/2, sL,1,sL,  sL*sL/2,sL,1 + sL*sL/2);
+                    }
+                    if(type == 2){//hypercycle
+                        lm = mat3(1,0,0, 0,cL,sL, 0,sL,cL);
+                    }
+                    //calculate the sign and cos of the hit angle in a sense
+                    cip1 = mat3(cip.z,0,-cip.x, 0,1,0, -cip.x,0,cip.z) * cip1;
+                    if(type > 0) cip1 = -cip1;
+                    cip1 = normalize(cip1*vec3(1,1,0));
+                    am = mat3(-cip1.x,mirror*-cip1.y,0, mirror*cip1.y,-cip1.x,0, 0,0,side)*side;
+                    //FragColor = vec4(Mod(acosh(cL),1),0,sL,1);
+                    //FragColor = vec4(-am[1][0],0,am[1][0],1);
+                    //d = 0;hitwall = true;
+                }
+                 */
+                /*
+                float k = innerdot(sp1,sp2);
+                mat3 rot;
+                if(type > 0){
+                    vec3 tempvec = sp1;
+                    sp1 = sp2;
+                    sp2 = tempvec;
+                }
+                rot = h2matto(sp1);
+                sp2 = rot*sp2;
+                t = length(sp2*vec3(1,1,0));
+                sp2 /= t;
+                rot = mat3(sp2.x,-sp2.y,0, sp2.y,sp2.x,0, 0,0,1)*rot;
+                {
+                float c = sqrt(k*k + 1);
+                if(type == 2) rot = mat3(t,0,k, 0,1,0, k,0,t)*rot;
+                rot = lm*rot;
+                if(type == 2) rot = mat3(t,0,-k, 0,1,0, -k,0,t)*rot;
+                if(type == 0 && si > 0) rot = mat3(-k,0,-t, 0,1,0, -t,0,-k)*rot;
+                }
+                if(si > 0) rot = am*rot;
+                vec3 cip1, cip2, cip;
+                cip.x = ds;
+                int cii = -1;
+                int i = int(positions[current_world]);
+                while(i < int(positions[current_world + 1])){
+                    type = int(positions[i + 7])&3;
+                    float limit = positions[i + 6];
+                    vec3 p1 = vec3(positions[i],positions[i + 1],positions[i + 2]), p2 = vec3(positions[i + 3],positions[i + 4],positions[i + 5]);
+                    float k = innerdot(p1,p2);
+                    p1 = rot*p1; p2 = rot*p2;
+                    float o = sqrt(k*k - p1.z*p1.z + p1.x*p1.x);
+                    float tR = (-k + o)/(p1.z - p1.x), itR = 1/tR;
+                    float tL = (-k + o)/(p1.z + p1.x), itL = 1/tL;
+                    vec3 cipR, cipL;
+                    cipR.x = (tR - itR)*0.5; cipR.z = cipR.x + itR;
+                    cipL.x = -(tL - itL)*0.5; cipL.z = cipL.x + tL;
+                    bool risvalid = tR > 0 && (limit < innerdot(p2,cipR) || limit == -inf), lisvalid = tL > 0 && (limit < innerdot(p2,cipL) || limit == -inf);
+                    if(risvalid && 0 < cipR.x && cipR.x < cip.x && (i != si || (lisvalid && cipL.z < cipR.z) ) ){
+                        cip = cipR;
+                        cii = i;
+                    }
+                    if(lisvalid && 0 < cipL.x && cipL.x < cip.x && (i != si || (risvalid && cipL.z > cipR.z) ) ){
+                        cip = cipL;
+                        cii = i;
+                    }
+                    if(i == cii){
+                        cip1 = p1;
+                        cip2 = p2;
+                    }
+                    i += sizeOfpow;
+                }//
+                //...
+                if(cii > 0){
+                    int dat = int(positions[cii + 7]);
+                    type = dat&3;
+                    current_world=(dat>>3)&511;
+                    int di = int(positions[current_world]) + sizeOfpow*(dat>>12)&1023;
+                    sp1 = vec3(positions[di],positions[di + 1],positions[di + 2]);
+                    sp2 = vec3(positions[di + 3],positions[di + 4],positions[di + 5]);
+                    si = di;
+                    float side = 1;
+                    if(((dat>>22)&1)==1) side = -1;
+                    mirror = 1;
+                    if(((dat>>23)&1)==1) mirror = -1;
+                    d -= acosh(cip.z);
+                    k = innerdot(cip1,cip2);
+                    float k2 = k*k;
+                    float cL = -innerdot(cip,cip2), sL = 1;
+                    if(type == 0){//circle
+                        cL = (cL - k2)/(1 - k2);
+                        sL = 1 - cL*cL;
+                    }
+                    if(type == 1){//horocycle
+                        sL = 2*cL - 2;
+                    }
+                    if(type == 2){//hypercycle
+                        cL = (cL + k2)/(k2 + 1);
+                        sL = cL*cL - 1;
+                    }
+                    sL = sqrt(sL) * sign(innerdot(lcross(cip1,cip2),cip))*side*mirror;
+                    if(type == 0){//circle
+                        lm = mat3(cL,-sL,0, sL,cL,0, 0,0,1);
+                    }
+                    if(type == 1){//horocycle
+                        lm = mat3(1 - sL*sL/2,-sL,-sL*sL/2, sL,1,sL,  sL*sL/2,sL,1 + sL*sL/2);
+                    }
+                    if(type == 2){//hypercycle
+                        lm = mat3(1,0,0, 0,cL,sL, 0,sL,cL);
+                    }
+                    //calculate the sign and cos of the hit angle in a sense
+                    cip1 = mat3(cip.z,0,-cip.x, 0,1,0, -cip.x,0,cip.z) * cip1;
+                    if(type > 0) cip1 = -cip1;
+                    cip1 = normalize(cip1*vec3(1,1,0));
+                    am = mat3(-cip1.x,mirror*-cip1.y,0, mirror*cip1.y,-cip1.x,0, 0,0,side)*side;
+                    //FragColor = vec4(Mod(acosh(cL),1),0,sL,1);
+                    //FragColor = vec4(-am[1][0],0,am[1][0],1);
+                    //d = 0;hitwall = true;
+                }
+                 */
             //...
             {
                 //...
+                //bug: camera not placed right when coming in from portal
+                mirror = 1;//temp
                 double roti[3][3];
                 h2invert(rot,roti);
                 vec3(pos, ds,0,dc);
                 vec3(ref, dx,-dy*mirror,sqrt(2));
-                lorenz(ref[2],ref[0],dc,ds);
+                lorenz(ref[0],ref[2],dc,ds);
                 matxpt(roti,pos);
                 matxpt(roti,ref);
-                backOnHyperboloid(pos);//error: more needed than it should be
+                backOnHyperboloid(pos);
                 backOnHyperboloid(ref);
                 d = 0;
             }
@@ -1296,12 +1517,16 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 
 int main(){
     /*{
-        std::vector<std::vector<float>> world0={{0,1,1, 0,0,1,-1.5,mkdest(1,1,0,0,0)}};//d*d/2 + 1 = -L for horocycles
+        std::vector<std::vector<float>> world0={{0,2,sqrt(5), 0,0,1, -inf,mkdest(0,1,0,0,0)}};//d*d/2 + 1 = -L for horocycles
         pawbuffer.push_back(world0);
         worldCurvatures.push_back(-1);
-        std::vector<std::vector<float>> world1={{-1,2,0, 1,2,0, 4,mkdest(1,0,0,0,0)}};
+        std::vector<std::vector<float>> world1={{0,3,0, 2,3,0, 4,mkdest(0,0,0,0,0)}};
         pawbuffer.push_back(world1);
         worldCurvatures.push_back(0);
+        pw = 0; plp[0] = 1; duppw = -1;//signals that the player isn't in a portal
+        vec3(pl, 0,0,1); vec3(camRef, 1,0,sqrt(2));
+        //
+        vec3(pl, 0,0,0);vec3(pl2, pl[0],pl[1]+pr,0);vec3(camRef, pl[0]+1,pl[1],0);pw=1;
     }//*/
     //NOTE: isr2 = 1/sqrt(2), sr2 = sqrt(2), I just got tired of typing it in testing
     {
@@ -1325,7 +1550,7 @@ int main(){
         vec3(pl2, pl[0],pl[1]+pr,0);//placing the default facing of the player
         vec3(camRef, pl[0]+1,pl[1],0);
         plp[0] = 1;//setting this to negative 1 mirrors
-		duppw = -1;//signals that the player isn't in a portal
+        duppw = -1;//signals that the player isn't in a portal
     }//*/
 
 
@@ -1413,7 +1638,7 @@ int main(){
     pl2[0]=pl[0]+pr;pl2[1]=pl[1];pl2[2]=pl[2]=0;
     plp[0]=1;
     camRef[0]=pl[0]+1;camRef[1]=pl[1];camRef[2]=pl[2];
-    duppw=-1;
+    duppw = -1;
     pw=0;//*/
     //double testpt1[]={1,-1};
     //entity player;
@@ -1626,7 +1851,7 @@ int main(){
                 }
             } else if (e.type==SDL_EVENT_JOYSTICK_BUTTON_DOWN){
                 std::cout<<"\nBUTTON!!\n";
-                moveEntity(0,ps,pl,pl2,camRef,&pw,plp);
+                moveEntity(0,2,pl,pl2,camRef,&pw,plp);
             }
         }
         if(facingAngle[2]>0){
@@ -1758,7 +1983,8 @@ int main(){
     SDL_Quit();
     return 0;
 }
-//to compile: g++ -O3 -w code.cpp -o code glad.o -lglfw -lGL -lX11 -lpthread -lXrandr -lXi -ldl -lSDL3
+
+//to compile: g++ -O3 -w code.cpp -o code glad.o -lglfw -lSDL3 && ./code
 
 //warnings are turned off by the -w, they were annoying
 
