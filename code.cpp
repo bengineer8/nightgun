@@ -1,4 +1,4 @@
-//to compile: g++ -O3 -w code.cpp -o code glad.o -lglfw -lSDL3
+//to compile: g++ -O3 -w code.cpp -o code glad.o -lglfw
 #include  <cstdio>
 #include <iostream>
 #include "glad.h"
@@ -7,13 +7,6 @@
 #include <fstream>
 #include <string>
 #include <vector>
-#include <SDL3/SDL.h>//To do: replace SDL for controller input or, if performance allows it, rewrite all rendering to use SDL instead of OpenGL
-#include <SDL3/SDL_main.h>
-//#include <unistd.h>
-//#include <linux/joystick.h>
-//#include <SDL3/SDL.h>//To do(?) rewrite all rendering to use SDL instead of openGL(?)
-//#include "libgamepad/include/libgamepad.hpp"//Note: Jank was done to get this to compile by modifying libgamepad/include/gamepad/binding.hpp, FIX THIS!!!
-//#include <libgamepad.hpp>
 
 
 
@@ -23,7 +16,7 @@
 
 #define positionsSize 1048576
 
-SDL_Joystick* gGameController = NULL;
+//SDL_Joystick* gGameController = NULL;
 
 struct entity{
     double pos1[3];
@@ -707,11 +700,11 @@ void moveEntity(double dx, double dy, float pos[], float pos2[], float ref[], in
                 ref[0]-=off[0];ref[1]-=off[1];
                 rotate(ref[0],ref[1],rot[0],-rot[1]);
                 d=0;
-                char noclip=0;//temporary
+                char noclip = 0;//temporary
                 //if(iterations>9) noclip=1;
 
                 //TO DO: Make wall checks its own function?
-                if(!noclip) {//check for walls and eject if in one.
+                if(!noclip) {
                     double RL[2],RD,RP2[3];
                     //WIP new wall checks for E2
                     double cp[2];//closest point and their p1 and p2
@@ -724,10 +717,11 @@ void moveEntity(double dx, double dy, float pos[], float pos2[], float ref[], in
                     while(i<paw[*cw+1] && !inwall){
                         double rc;
                         char iswall=(((int)paw[i+7])&4);
+                        bool fail = false;
                         double p1[]={paw[i],paw[i+1]},p2[]={paw[i+3],paw[i+4]};
                         p2[0]-=p1[0];p2[1]-=p1[1];
-                        double posc[]={pos[0]-p1[0],pos[1]-p1[1]};
-                        cp[0]=posc[0];cp[1]=posc[1];
+                        double posc[] = {pos[0]-p1[0], pos[1]-p1[1]};
+                        cp[0] = posc[0]; cp[1] = posc[1];
                         rl=p2[0]*p2[0]+p2[1]*p2[1];//actually the square of the radius/length of the wall/portal, will sqrt later if needed.
                         char T=((char)paw[i+7])&3;
                         switch(T){//getting the closest points on the arc or line segment
@@ -739,7 +733,7 @@ void moveEntity(double dx, double dy, float pos[], float pos2[], float ref[], in
                                 if(al==4 || (cp[0]-p2[0])*(cp[0]-p2[0])+(cp[1]-p2[1])*(cp[1]-p2[1])<ala){
                                     if(checkifinportal<1 && !iswall) checkifinportal=1;
                                 } else{
-                                    double endpt1[2] = {paw[i + 8],paw[i + 9]},
+                                    /*double endpt1[2] = {paw[i + 8],paw[i + 9]},//BUG: this no work
                                     endpt2[2] = {paw[i + 11],paw[i + 12]};
                                     endpt1[0] -= p1[0];endpt1[1] -= p1[1];
                                     endpt2[0] -= p1[0];endpt2[1] -= p1[1];
@@ -747,8 +741,8 @@ void moveEntity(double dx, double dy, float pos[], float pos2[], float ref[], in
                                         cp[0] = endpt1[0];cp[1] = endpt1[1];
                                     } else {
                                         cp[0] = endpt2[0];cp[1] = endpt2[1];
-                                    }
-                                    /*double c=1-al*0.5,s=sqrt(1-c*c);
+                                    }//*/
+                                    double c=1-al*0.5,s=sqrt(1-c*c);
                                     if(posc[1]*p2[0]-posc[0]*p2[1]<0) s=-s;
                                     cp[0]=p2[0];cp[1]=p2[1];
                                     rotate(cp[0],cp[1],c,s);//*/
@@ -1530,15 +1524,17 @@ int main(){
     }//*/
     //NOTE: isr2 = 1/sqrt(2), sr2 = sqrt(2), I just got tired of typing it in testing
     {
-        std::vector<std::vector<float>> world0={{0,2,0, 0.5,2,0, 2,mkdest(0,1,0,1,0)},//portal, type 0 (arc), linked to world1, index 0, other side = 1, mirror = 0
-        {2,4,0, 0,4,0, 0,mkdest(1,0,1,0,1)},//portal, type 1(E2 line), linked to world 0, index 1 (itself), side = 0, mirror = 1
-        {1,1,0, 2,1,0, 0,5},//E2 line wall
-        {2,2,0, 3,2,0, 2,4}//arc wall
+        std::vector<std::vector<float>> world0={
+            {0,2,0, 0.5,2,0, 2,mkdest(0,1,0,1,0)},//portal, type 0 (arc), linked to world1, index 0, other side = 1, mirror = 0
+            {2,4,0, 0,4,0, 0,mkdest(1,0,1,0,1)},//portal, type 1(E2 line), linked to world 0, index 1 (itself), side = 0, mirror = 1
+            {1,1,0, 2,1,0, 0,5},//E2 line wall
+            {2,2,0, 3,2,0, 2,4}//arc wall
         };
         pawbuffer.push_back(world0);
         worldCurvatures.push_back(0);//euclidian
         /////////////////////////
-        std::vector<std::vector<float>> world1={{0,0,1, 0,0.5,0.866025403784, -1,mkdest(0,0,0,1,0)}//portal, type 0 (arc), linked to world0, index 0, other side = 1, mirror = 0
+        std::vector<std::vector<float>> world1={
+            {0,0,1, 0,0.5,0.866025403784, -1,mkdest(0,0,0,1,0)}//portal, type 0 (arc), linked to world0, index 0, other side = 1, mirror = 0
         , {0,0,1, 0,1,0, -0.5,4}//arc wall
         , {-1,0,0, 0,isr2,-isr2, -0.292893218813,4}//arc wall
         };
@@ -1780,25 +1776,16 @@ int main(){
     // 3. then set our vertex attributes pointers
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
-
-
-
-
-    //Analog joystick dead zone
-    //const int JOYSTICK_DEAD_ZONE = 8000;
-    //Game Controller 1 handler
-    //SDL_Joystick* gGameController = NULL;
-
-
-
-    //Start up SDL
-	SDL_Init( /*SDL_INIT_VIDEO |*/ SDL_INIT_JOYSTICK );
-	SDL_JoystickID *joysticks = SDL_GetJoysticks( NULL );
-	gGameController = SDL_OpenJoystick( joysticks[ 0 ] );
-	SDL_free( joysticks );
-	//Event handler
-	SDL_Event e;
-    int JOYSTICK_DEAD_ZONE = 1500;
+    int axesCount;
+    int buttonCount;
+    std::cout<<(int)glfwJoystickIsGamepad(GLFW_JOYSTICK_1)<<"\n";
+    if (glfwJoystickIsGamepad(GLFW_JOYSTICK_1))
+{
+    printf("y\n");
+}
+    float deadzone = 0.05;
+    float axi[6];
+    //int JOYSTICK_DEAD_ZONE = 1500;
     GLuint ssbosd;
     glGenBuffers(1, &ssbosd);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbosd);
@@ -1809,7 +1796,6 @@ int main(){
     glGenFramebuffers(1, &framebuffer1);
     glBindTexture(GL_TEXTURE_2D, framestage1);
     glUseProgram(shaderProgram);
-    //
     float zoom=1;
     long frameCount=0;
     float dx=0,dy=0;
@@ -1832,32 +1818,49 @@ int main(){
 
 
         facingAngle[2]=0;
-        while( SDL_PollEvent( &e ) != 0 ){//keep checking inputs until all are gotten through(?)
-            //0,1 LS, 3,4 RS
-            if( e.type == SDL_EVENT_JOYSTICK_AXIS_MOTION ){
-                //X axis motion
-                if( e.jaxis.axis == 0 ){
-                    dx=ps*e.jaxis.value/32768.0;
-                }
-                //Y axis motion
-                else if( e.jaxis.axis == 1 ){
-                    dy=ps*e.jaxis.value/-32768.0;
-                } else if(e.jaxis.axis == 3){
-                    facingAngle[0]=e.jaxis.value;
-                    facingAngle[2]=1;
-                } else if(e.jaxis.axis == 4){
-                    facingAngle[1]=-e.jaxis.value;
-                    facingAngle[2]=1;
-                }
-            } else if (e.type==SDL_EVENT_JOYSTICK_BUTTON_DOWN){
-                std::cout<<"\nBUTTON!!\n";
-                moveEntity(0,2,pl,pl2,camRef,&pw,plp);
-            }
+        const float *axes = glfwGetJoystickAxes(GLFW_JOYSTICK_1, &axesCount);
+        for(int n = 0; n < axesCount; n++){
+            if(abs(axes[n]) < deadzone) axi[n] = 0;
+            else axi[n] = axes[n];
         }
-        if(facingAngle[2]>0){
+        if(abs(axes[0]) < deadzone) axi[0] = 0;
+        else axi[0] = axes[0];
+        if(abs(axes[1]) < deadzone) axi[1] = 0;
+        else axi[1] = axes[1];
+        if(abs(axes[3]) < deadzone) axi[3] = 0;
+        else axi[3] = axes[3];
+        if(abs(axes[4]) < deadzone) axi[4] = 0;
+        else axi[4] = axes[4];
+        dx = ps*axi[0];
+        dy = -ps*axi[1];
+        facingAngle[0] = axi[3];
+        facingAngle[1] = -axi[4];
+        if(abs(axi[3]) > 0 || abs(axi[4]) > 0) facingAngle[2] = 1;
+        const unsigned char* buttons = glfwGetJoystickButtons(GLFW_JOYSTICK_1, &buttonCount);
+        for(int n = 0; n < buttonCount; n++){
+            if(buttons[n] == GLFW_PRESS) printf("%i\n",n);
+        }
+        //A:0
+        //B:1
+        //X:2
+        //Y:3
+        //LB:4
+        //RB:5
+        //back:6
+        //start:7
+        //logo:8
+        //LS:9
+        //RS:10
+        //D up:11
+        //D right:12
+        //D down:13
+        //D left:14
+        //
+
+        if(facingAngle[2] > 0){
             //printf("%f\t%f\n",facingAngle[0],facingAngle[1]);
-            facingAngle[2]=sqrt(facingAngle[0]*facingAngle[0]+facingAngle[1]*facingAngle[1]);
-            if(facingAngle[2]>7000){
+            facingAngle[2] = sqrt(facingAngle[0]*facingAngle[0] + facingAngle[1]*facingAngle[1]);
+            if(facingAngle[2] > deadzone*2){
                 //printf("%f\n",facingAngle[2]);
                 facingAngle[3]=facingAngle[0]/facingAngle[2];
                 facingAngle[4]=facingAngle[1]/facingAngle[2]*plp[0];
@@ -1888,8 +1891,6 @@ int main(){
             }
             facingAngle[2]=0;
         }
-        if(dx*dx<0.002*0.002) dx=0;//jank
-        if(dy*dy<0.002*0.002) dy=0;//jank*/
         if(dy!=0||dx!=0) {
             //movePlayer(dx,dy,0);
             moveEntity(dx,dy,pl,pl2,camRef,&pw,plp);
@@ -1976,11 +1977,11 @@ int main(){
 
     glfwTerminate();
     //Close game controller
-    SDL_CloseJoystick( gGameController );
-    gGameController = NULL;
+    //SDL_CloseJoystick( gGameController );
+    //gGameController = NULL;
 
     //Quit SDL subsystems
-    SDL_Quit();
+    //SDL_Quit();
     return 0;
 }
 
@@ -1993,6 +1994,7 @@ int main(){
 //https://askubuntu.com/questions/1186517/which-package-to-install-to-get-header-file-glad-h
 //https://registry.khronos.org/OpenGL-Refpages/gl4/html/glUniform.xhtml
 //https://www.khronos.org/opengl/wiki/Shader_Storage_Buffer_Object
+//https://stackoverflow.com/questions/71871742/how-can-i-get-joystick-data-using-glfw
 
 
 //maybe https://gist.github.com/jasonwhite/c5b2048c15993d285130 ?
