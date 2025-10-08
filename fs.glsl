@@ -500,7 +500,7 @@ void main(){
                             d -= arctan(cip.x,cip.z);
                             float cosr2 = dot(cip1,cip2); cosr2 *= cosr2;
                             float c = (dot(cip2,cip) - cosr2)/(1 - cosr2);
-                            float s = sqrt(1 - c*c) * sign(dot(cip,cross(cip1,cip2)));
+                            float s = safe_sqrt(1 - c*c) * sign(dot(cip,cross(cip1,cip2)));
                             lm = mat3(c,-s*side*mirror,0, s*side*mirror,c,0, 0,0,1);
                             //lm = s2matto(cip1);//borrowing this memory space
                             //to do: find a faster way than s2matto

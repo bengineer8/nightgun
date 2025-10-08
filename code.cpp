@@ -1,14 +1,17 @@
-//to compile: g++ -O3 -w code.cpp -o code glad.o -lglfw
+//to compile for windows on Linux: x86_64-w64-mingw32-g++ -O3 -w code.cpp -o nightgun.exe glad.c -static -L. -l glfw3dll
+//to compile on Windows: g++ -O3 -w code.cpp -o nightgun.exe glad.c -static -L. -l glfw3dll
+//^to get g++ working on Windows, follow this but only inclusively to "Check your MinGW installation": https://code.visualstudio.com/docs/cpp/config-mingw
+//to run, open the folder this file is in, alt+d, type "cmd", hit enter, copy the compile command, and hit enter
+
+//for linux: g++ -O3 -w code.cpp -o nightgun glad.c -lglfw
 #include  <cstdio>
 #include <iostream>
 #include "glad.h"
-#include <GLFW/glfw3.h>
+#include "glfw3.h"
 #include <cmath>
 #include <fstream>
 #include <string>
 #include <vector>
-
-
 
 //#include <windows.h>
 
@@ -544,7 +547,7 @@ void moveEntity(double dx, double dy, float pos[], float pos2[], float ref[], in
     double EL[2]={dx,-dy}, EA[2];//Entrance/exit location and angle
     double pos2r[3];
     int iterations=0;
-    while(d>0&&iterations<9){
+    while(d>0&&iterations < 19){
         float iaunit = worldCurvatures[*cw];
         d+=ped;
         iterations++;
@@ -1510,6 +1513,17 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 }
 
 int main(){
+    //taking in account that the right stick is mapped differently on Windows than on Linux
+    int rsxi, rsyi;
+
+    #ifdef __GNUC__
+        rsxi = 3;
+        rsyi = 4;
+    #endif
+    #ifdef _WIN64
+        rsxi = 2;
+        rsyi = 3;
+    #endif
     /*{
         std::vector<std::vector<float>> world0={{0,2,sqrt(5), 0,0,1, -inf,mkdest(0,1,0,0,0)}};//d*d/2 + 1 = -L for horocycles
         pawbuffer.push_back(world0);
@@ -1778,14 +1792,8 @@ int main(){
     glEnableVertexAttribArray(0);
     int axesCount;
     int buttonCount;
-    std::cout<<(int)glfwJoystickIsGamepad(GLFW_JOYSTICK_1)<<"\n";
-    if (glfwJoystickIsGamepad(GLFW_JOYSTICK_1))
-{
-    printf("y\n");
-}
-    float deadzone = 0.05;
+    float deadzone = 0.06;
     float axi[6];
-    //int JOYSTICK_DEAD_ZONE = 1500;
     GLuint ssbosd;
     glGenBuffers(1, &ssbosd);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbosd);
@@ -1807,105 +1815,117 @@ int main(){
 
         // input
         if(frameCount>0){
+            int kx = 0, ky = 0;
+            if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) glfwSetWindowShouldClose(window, true);
+            if(glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) ky+=1;
+            if(glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) kx-=1;
+            if(glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) ky-=1;
+            if(glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) kx+=1;//*/
+            if(glfwGetKey(window, GLFW_KEY_O) == GLFW_PRESS) {std::cout<<pl[0]<<"\t"<<pl[1]<<"\t"<<pl[2]<<"\n";}
 
-        if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) glfwSetWindowShouldClose(window, true);
-        /*dx=0;dy=0;
-        if(glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) dy+=1;
-        if(glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) dx-=1;
-        if(glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) dy-=1;
-        if(glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) dx+=1;//*/
-        if(glfwGetKey(window, GLFW_KEY_O) == GLFW_PRESS) {std::cout<<pl[0]<<"\t"<<pl[1]<<"\t"<<pl[2]<<"\n";}
 
-
-        facingAngle[2]=0;
-        const float *axes = glfwGetJoystickAxes(GLFW_JOYSTICK_1, &axesCount);
-        for(int n = 0; n < axesCount; n++){
-            if(abs(axes[n]) < deadzone) axi[n] = 0;
-            else axi[n] = axes[n];
-        }
-        if(abs(axes[0]) < deadzone) axi[0] = 0;
-        else axi[0] = axes[0];
-        if(abs(axes[1]) < deadzone) axi[1] = 0;
-        else axi[1] = axes[1];
-        if(abs(axes[3]) < deadzone) axi[3] = 0;
-        else axi[3] = axes[3];
-        if(abs(axes[4]) < deadzone) axi[4] = 0;
-        else axi[4] = axes[4];
-        dx = ps*axi[0];
-        dy = -ps*axi[1];
-        facingAngle[0] = axi[3];
-        facingAngle[1] = -axi[4];
-        if(abs(axi[3]) > 0 || abs(axi[4]) > 0) facingAngle[2] = 1;
-        const unsigned char* buttons = glfwGetJoystickButtons(GLFW_JOYSTICK_1, &buttonCount);
-        for(int n = 0; n < buttonCount; n++){
-            if(buttons[n] == GLFW_PRESS) printf("%i\n",n);
-        }
-        //A:0
-        //B:1
-        //X:2
-        //Y:3
-        //LB:4
-        //RB:5
-        //back:6
-        //start:7
-        //logo:8
-        //LS:9
-        //RS:10
-        //D up:11
-        //D right:12
-        //D down:13
-        //D left:14
-        //
-
-        if(facingAngle[2] > 0){
-            //printf("%f\t%f\n",facingAngle[0],facingAngle[1]);
-            facingAngle[2] = sqrt(facingAngle[0]*facingAngle[0] + facingAngle[1]*facingAngle[1]);
-            if(facingAngle[2] > deadzone*2){
-                //printf("%f\n",facingAngle[2]);
-                facingAngle[3]=facingAngle[0]/facingAngle[2];
-                facingAngle[4]=facingAngle[1]/facingAngle[2]*plp[0];
-                if(worldCurvatures[pw]==0){//to do: do something similar for the duplicate
-                    double crc[2]={camRef[0]-pl[0],camRef[1]-pl[1]};
-                    pl2[0]=pr*facingAngle[3];pl2[1]=pr*facingAngle[4];
-                    rotate(pl2[0],pl2[1],crc[0],crc[1]);
-                    pl2[0]+=pl[0];pl2[1]+=pl[1];
-                    pl2[2]=0;
-                } else if(worldCurvatures[pw]>0){
-                    double rot[3][3],roti[3][3];
-                    s2matto(pl,rot);
-                    matxpt(rot,camRef,pl2);//reusing memory space that will be redefined anyway
-                    rotXY(rot,pl2[0],-pl2[1]);
-                    s2dadtopt(pr,facingAngle[3],facingAngle[4],pl2);
-                    transpose(rot,roti);
-                    matxpt(roti,pl2);
-                    backOnSphere(pl2);
-                }
-                if(duppw>=0){
-                    if(worldCurvatures[duppw]==0 || 1){
-                        //jank bandaid solution:
-                        moveEntity(ped*facingAngle[3],ped*facingAngle[4],pl,pl2,camRef,&pw,plp);
-                        moveEntity(-ped*facingAngle[3],-ped*facingAngle[4],pl,pl2,camRef,&pw,plp);
-                        //printf("\n");
-                    }
+            facingAngle[2]=0;
+            const float *axes = glfwGetJoystickAxes(GLFW_JOYSTICK_1, &axesCount);
+            //for(int n = 0; n < axesCount; n++) printf("%f\t",axes[n]);
+            //printf("\n");
+            if(axesCount > 0){
+                if(abs(axes[0]) < deadzone) axi[0] = 0;
+                else axi[0] = axes[0];
+                if(abs(axes[1]) < deadzone) axi[1] = 0;
+                else axi[1] = axes[1];
+                if(abs(axes[rsxi]) < deadzone) axi[rsxi] = 0;
+                else axi[rsxi] = axes[rsxi];
+                if(abs(axes[rsyi]) < deadzone) axi[rsyi] = 0;
+                else axi[rsyi] = axes[rsyi];
+                dx = ps*axi[0];
+                dy = -ps*axi[1];
+                facingAngle[0] = axi[rsxi];
+                facingAngle[1] = -axi[rsyi];
+                if(abs(axi[rsxi]) > 0 || abs(axi[rsyi]) > 0) facingAngle[2] = 1;
+                const unsigned char* buttons = glfwGetJoystickButtons(GLFW_JOYSTICK_1, &buttonCount);
+                for(int n = 0; n < buttonCount; n++){
+                    if(buttons[n] == GLFW_PRESS) printf("%i\n",n);
                 }
             }
-            facingAngle[2]=0;
-        }
-        if(dy!=0||dx!=0) {
-            //movePlayer(dx,dy,0);
-            moveEntity(dx,dy,pl,pl2,camRef,&pw,plp);
-        }
-        if(glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && zoom<1) zoom+=pow(2,floor(log2(zoom)-4));
-        if(glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS && zoom>pr/pi) zoom-=pow(2,floor(log2(zoom)-4));
-        glUniform3fv(glGetUniformLocation(shaderProgram,"pl"),1,&pl[0]);
-        glUniform3fv(glGetUniformLocation(shaderProgram,"pl2"),1,&pl2[0]);
-        glUniform3fv(glGetUniformLocation(shaderProgram,"camRef"),1,&camRef[0]);
-        glUniform3fv(glGetUniformLocation(shaderProgram,"duppl"),1,&duppl[0]);
-        glUniform3fv(glGetUniformLocation(shaderProgram,"duppl2"),1,&duppl2[0]);
-        glUniform1f(glGetUniformLocation(shaderProgram, "mirrorPlayer"),plp[0]);
-        glUniform1f(glGetUniformLocation(shaderProgram, "zoom"),zoom);
-        glUniform1i(glGetUniformLocation(shaderProgram, "pw"),pw);
-        glUniform1i(glGetUniformLocation(shaderProgram, "duppw"),duppw);
+            else {
+                for(int n = 0; n < 6; n++) axi[n] = 0;
+                dx = dy = 0;
+            }
+            //A:0
+            //B:1
+            //X:2
+            //Y:3
+            //LB:4
+            //RB:5
+            //back:6
+            //start:7
+            //logo:8
+            //LS:9
+            //RS:10
+            //D up:11
+            //D right:12
+            //D down:13
+            //D left:14
+            //
+
+            if(facingAngle[2] > 0){
+                //printf("%f\t%f\n",facingAngle[0],facingAngle[1]);
+                facingAngle[2] = sqrt(facingAngle[0]*facingAngle[0] + facingAngle[1]*facingAngle[1]);
+                if(facingAngle[2] > deadzone*2){
+                    //printf("%f\n",facingAngle[2]);
+                    facingAngle[3]=facingAngle[0]/facingAngle[2];
+                    facingAngle[4]=facingAngle[1]/facingAngle[2]*plp[0];
+                    //printf("%lf\t%lf\t%lf\n",facingAngle[2],facingAngle[3],facingAngle[4]);
+                    if(worldCurvatures[pw]==0){//to do: do something similar for the duplicate
+                        double crc[2]={camRef[0]-pl[0],camRef[1]-pl[1]};
+                        pl2[0]=pr*facingAngle[3];pl2[1]=pr*facingAngle[4];
+                        rotate(pl2[0],pl2[1],crc[0],crc[1]);
+                        pl2[0]+=pl[0];pl2[1]+=pl[1];
+                        pl2[2]=0;
+                    } else if(worldCurvatures[pw]>0){
+                        double rot[3][3],roti[3][3];
+                        s2matto(pl,rot);
+                        matxpt(rot,camRef,pl2);//reusing memory space that will be redefined anyway
+                        rotXY(rot,pl2[0],-pl2[1]);
+                        s2dadtopt(pr,facingAngle[3],facingAngle[4],pl2);
+                        transpose(rot,roti);
+                        matxpt(roti,pl2);
+                        backOnSphere(pl2);
+                    }
+                    if(duppw>=0){
+                        if(worldCurvatures[duppw]==0 || 1){
+                            //jank bandaid solution:
+                            moveEntity(ped*facingAngle[3],ped*facingAngle[4],pl,pl2,camRef,&pw,plp);
+                            moveEntity(-ped*facingAngle[3],-ped*facingAngle[4],pl,pl2,camRef,&pw,plp);
+                            //printf("\n");
+                        }
+                    }
+                }
+                facingAngle[2]=0;
+            }
+            if(kx != 0 || ky !=0){
+                dx = kx*ps;
+                dy = ky*ps;
+                if(kx != 0 && ky != 0){
+                    dx /= sr2;
+                    dy /= sr2;
+                }
+            }
+            if(dy!=0||dx!=0) {
+                //movePlayer(dx,dy,0);
+                moveEntity(dx,dy,pl,pl2,camRef,&pw,plp);
+            }
+            if(glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && zoom<1) zoom+=pow(2,floor(log2(zoom)-4));
+            if(glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS && zoom>pr/pi) zoom-=pow(2,floor(log2(zoom)-4));
+            glUniform3fv(glGetUniformLocation(shaderProgram,"pl"),1,&pl[0]);
+            glUniform3fv(glGetUniformLocation(shaderProgram,"pl2"),1,&pl2[0]);
+            glUniform3fv(glGetUniformLocation(shaderProgram,"camRef"),1,&camRef[0]);
+            glUniform3fv(glGetUniformLocation(shaderProgram,"duppl"),1,&duppl[0]);
+            glUniform3fv(glGetUniformLocation(shaderProgram,"duppl2"),1,&duppl2[0]);
+            glUniform1f(glGetUniformLocation(shaderProgram, "mirrorPlayer"),plp[0]);
+            glUniform1f(glGetUniformLocation(shaderProgram, "zoom"),zoom);
+            glUniform1i(glGetUniformLocation(shaderProgram, "pw"),pw);
+            glUniform1i(glGetUniformLocation(shaderProgram, "duppw"),duppw);
         }
 
 
