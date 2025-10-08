@@ -13,7 +13,7 @@ Linux:
     0. Download and install glfw, following the instructions listed in the top answer here: https://stackoverflow.com/questions/17768008/how-to-build-install-glfw-3-and-use-it-in-a-linux-project
     setup done
     2. Commpand to compile: g++ -O3 -w code.cpp -o nightgun glad.c -lglfw
+    cmake -G "Unix Makefiles"
+
 Mac:
     coming soon
-
-
