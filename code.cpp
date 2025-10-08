@@ -946,7 +946,7 @@ void moveEntity(double dx, double dy, float pos[], float pos2[], float ref[], in
                     {
                     double cosr2 = dot(cip1,cip2); cosr2 *= cosr2;
                     double cosE = (dot(cip2,cip) - cosr2)/(1 - cosr2);
-                    double sinE = -sqrt(1 - cosE*cosE)*mirror*side;
+                    double sinE = -safe_sqrt(1 - cosE*cosE)*mirror*side;
                     //getting the sign of sin, dot(cross(p2,p1),p)
                     //to do: make this its own function later
                     double cross[3];
