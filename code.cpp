@@ -85,7 +85,8 @@ char sign(float f){
     return 1;
 }
 
-double abs(double x){
+//comment this out on mac
+/*double abs(double x){
     if(x<0) return -x;
     return x;
 }//*/
