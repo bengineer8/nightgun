@@ -1,10 +1,9 @@
-//to compile for windows on Linux: x86_64-w64-mingw32-g++ -O3 -w code.cpp -o nightgun.exe glad.c -static -L. -l glfw3dll
-//to compile on Windows: g++ -O3 -w code.cpp -o nightgun.exe glad.c -static -L. -l glfw3dll
+//to compile for windows on Linux: x86_64-w64-mingw32-g++ -O3 -w code.cpp glad.c -o nightgun.exe -static -L. -l glfw3dll
+//to compile on Windows: g++ -O3 -w code.cpp glad.c -o nightgun.exe -static -L. -l glfw3dll
 //^to get g++ working on Windows, follow this but only inclusively to "Check your MinGW installation": https://code.visualstudio.com/docs/cpp/config-mingw
 //to run, open the folder this file is in, alt+d, type "cmd", hit enter, copy the compile command, and hit enter
 
-//for linux: g++ -O3 -w code.cpp -o nightgun glad.c -lglfw
-#include  <cstdio>
+//for linux: g++ -O3 -w code.cpp glad.c -o nightgun -lglfw
 #include <iostream>
 #include "glad.h"
 #include "glfw3.h"
@@ -29,14 +28,14 @@ struct entity{
 };
 
 
-std::vector<float> etfl(entity E){
+/*std::vector<float> etfl(entity E){
     std::vector<float> F={E.pos1[0],E.pos1[1],E.pos1[2],E.pos2[0],E.pos2[1],E.pos2[2], E.props1, E.props2};
     return F;
-}
+}*/
 
 std::vector<std::vector<std::vector<float>>> pawbuffer;
-std::vector<std::vector<std::vector<double>>> entitybuffer;//things that move around are stored with more precision
-std::vector<std::vector<std::vector<double>>> dopgangbuf;//doppleganger buffer, used for render and collision checking copies, not used yet
+//std::vector<std::vector<std::vector<double>>> entitybuffer;//things that move around are stored with more precision
+//std::vector<std::vector<std::vector<double>>> dopgangbuf;//doppleganger buffer, used for render and collision checking copies, not used yet
 std::vector<float> worldCurvatures;
 float shader_data[positionsSize];
 float worldCurvs[16];//to do: make this all done in 1 batch later
@@ -89,7 +88,7 @@ char sign(float f){
 double abs(double x){
     if(x<0) return -x;
     return x;
-}
+}//*/
 
 char sign(double f){
     if(f<0) return -1;
@@ -426,7 +425,7 @@ char e2pbc(double pi[2], double pf[2], int cw){//e2 portal between check, checks
                     case 5:
                         break;
                     default:
-                        std::cout<<i<<"\tinvalid type\n";
+                        //std::cout<<i<<"\tinvalid type\n";
                         break;
                 }
 
@@ -444,7 +443,79 @@ void killEntity(){
     //Do this later.
 }
 
-//might de function and inline this later
+void updateDuplicateRot(float pos[], float pos2[], float dpos[], float dpos2[], int w, int i){
+    double p1[] = {paw[i],paw[i + 1],paw[i + 2]};
+    int dat = (int)paw[i + 7];
+    int type = dat&3;
+    char mirror = (dat>>23)&1, side = (dat>>22)&1;
+    double iaunit = worldCurvatures[w];
+    double pos2r[3];
+    copypt(pos2,pos2r);
+    if(iaunit == 0 && type == 1){
+        double p0[] = {pos[0],pos[1]}, p2[] = {paw[i + 3],paw[i + 4]};
+        p0[0] -= p1[0]; p0[1] -= p1[1];
+        p2[0] -= p1[0]; p2[1] -= p1[1];
+        double C = (p0[0]*p2[0] + p0[1]*p2[1])/(p2[0]*p2[0] + p2[1]*p2[1]);
+        p2[0] *= C; p2[1] *= C;
+        p1[0] += p2[0]; p1[1] += p2[1];
+    }
+    if(iaunit == 0){
+        p1[0] -= pos[0];p1[1] -= pos[1];
+        pos2r[0] -= pos[0];pos2r[1] -= pos[1];
+    } else if(iaunit > 0){
+        double rot[3][3];
+        s2matto(pos,rot);
+        matxpt(rot,p1);
+        matxpt(rot,pos2r);
+    }
+    p1[2] = sqrt(p1[0]*p1[0] + p1[1]*p1[1]);
+    p1[0] /= p1[2]; p1[1] /= p1[2];
+    rotate(pos2r[0],pos2r[1],p1[0],-p1[1]);
+    if(mirror == 1) pos2r[1] = -pos2r[1];
+    if(side == 1){
+        pos2r[1] = -pos2r[1];
+        pos2r[0] = -pos2r[0];
+    }
+    if(iaunit == 0){
+        pos2r[0] /= pr; pos2r[1] /= pr;
+    } else if(iaunit > 0){
+        pos2r[0] /= prs; pos2r[1] /= prs;
+    }
+    w = (dat>>3)&511;
+    i = int(paw[w]) + sizeOfPow*(dat>>12)&1023;
+    iaunit = worldCurvatures[w];
+    vec3(p1,paw[i],paw[i + 1],paw[i + 2]);
+    if(iaunit == 0 && type == 1){
+        double p0[] = {dpos[0],dpos[1]}, p2[] = {paw[i + 3],paw[i + 4]};
+        p0[0] -= p1[0]; p0[1] -= p1[1];
+        p2[0] -= p1[0]; p2[1] -= p1[1];
+        double C = (p0[0]*p2[0] + p0[1]*p2[1])/(p2[0]*p2[0] + p2[1]*p2[1]);
+        p2[0] *= C; p2[1] *= C;
+        p1[0] += p2[0]; p1[1] += p2[1];
+    }
+    if(iaunit == 0){
+        pos2r[0] *= pr; pos2r[1] *= pr;
+        p1[0] -= dpos[0];p1[1] -= dpos[1];
+        p1[2] = sqrt(p1[0]*p1[0] + p1[1]*p1[1]);
+        p1[0] /= p1[2]; p1[1] /= p1[2];
+        rotate(pos2r[0],pos2r[1],p1[0],p1[1]);
+        pos2r[0] += dpos[0]; pos2r[1] += dpos[1];
+        dpos2[0] = pos2r[0]; dpos2[1] = pos2r[1];
+    } else if(iaunit > 0){
+        double rot[3][3], roti[3][3];
+        s2matto(dpos,rot);
+        matxpt(rot,p1);
+        p1[2] = sqrt(p1[0]*p1[0] + p1[1]*p1[1]);
+        p1[0] /= p1[2]; p1[1] /= p1[2];
+        s2dadtopt(pr,pos2r[0],pos2r[1],dpos2);
+        rotate(dpos2[0],dpos2[1],p1[0],p1[1]);
+        transpose(rot,roti);
+        matxpt(roti,dpos2);
+    }
+    //
+}
+
+
 void createDuplicate(double RL[], double RD, double p[], int ipi, int* w, double pos1[], double pos2[]){
     int dat=(int)paw[ipi+7];
     int type=dat&3;
@@ -460,7 +531,7 @@ void createDuplicate(double RL[], double RD, double p[], int ipi, int* w, double
         p[1]=-p[1];
     }
     *w=((dat)>>3)&511;
-    float iaunit=worldCurvatures[*w];
+    double iaunit=worldCurvatures[*w];
     int i=int(paw[*w])+sizeOfPow*(dat>>12)&1023;
     double p1[]={paw[i],paw[i+1],paw[i+2]},p2[]={paw[i+3],paw[i+4],paw[i+5]};
     if(iaunit == 0){
@@ -631,7 +702,7 @@ void moveEntity(double dx, double dy, float pos[], float pos2[], float ref[], in
                     case 5:
                         break;
                     default:
-                        std::cout<<i<<"\tinvalid type\n";
+                        //std::cout<<i<<"\tinvalid type\n";
                         break;
                 }
 
@@ -1046,6 +1117,8 @@ void moveEntity(double dx, double dy, float pos[], float pos2[], float ref[], in
                             matxpt(rot,posc);
                             matxpt(rot,pos2c);
                             matxpt(rot,relLoc);
+                            if(cosODis > 1) cosODis = 1;
+                            if(cosODis < -1) cosODis = -1;
                             relLoc[2] = acos(cosODis);
                             if(posc[2] > ip2[2]) relLoc[2] = -relLoc[2];
                             rotate(relLoc[0],relLoc[1],ip2[0],-ip2[1]);
@@ -1067,6 +1140,7 @@ void moveEntity(double dx, double dy, float pos[], float pos2[], float ref[], in
                             createDuplicate(relLoc,relLoc[2],pos2c,indexOfIntersection,&duppw,pos1,pos3);//pos2's duplicate is not being made correctly but pos's looks fine, investigate
                             copypt(pos1,duppl);
                             copypt(pos3,duppl2);
+                            iopip = indexOfIntersection;//make this entity specific later
                         }
                         if(inwall > 0){
                             d = 1.01*(playerWallCollisionr - acos(cosODis) );
@@ -1493,7 +1567,7 @@ void moveEntity(double dx, double dy, float pos[], float pos2[], float ref[], in
 }
 
 
-class e2chunk{
+/*class e2chunk{
 public:
     int x;
     int y;
@@ -1504,7 +1578,7 @@ class h2chunk{
 public:
     std::vector<char> address;
     std::vector<std::vector<double>> geo;
-};
+};*/
 
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
@@ -1537,6 +1611,7 @@ int main(){
         vec3(pl, 0,0,0);vec3(pl2, pl[0],pl[1]+pr,0);vec3(camRef, pl[0]+1,pl[1],0);pw=1;
     }//*/
     //NOTE: isr2 = 1/sqrt(2), sr2 = sqrt(2), I just got tired of typing it in testing
+
     {
         std::vector<std::vector<float>> world0={
             {0,2,0, 0.5,2,0, 2,mkdest(0,1,0,1,0)},//portal, type 0 (arc), linked to world1, index 0, other side = 1, mirror = 0
@@ -1821,7 +1896,19 @@ int main(){
             if(glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) kx-=1;
             if(glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) ky-=1;
             if(glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) kx+=1;//*/
-            if(glfwGetKey(window, GLFW_KEY_O) == GLFW_PRESS) {std::cout<<pl[0]<<"\t"<<pl[1]<<"\t"<<pl[2]<<"\n";}
+            if(glfwGetKey(window, GLFW_KEY_O) == GLFW_PRESS) {
+                printP(pl);
+                //printP(camRef);
+                //printP(duppl);
+                //printf("%i\t%i\n",pw,duppw);
+            }
+            if(glfwGetKey(window, GLFW_KEY_K) == GLFW_PRESS) {
+                //dx:-0.0026313879061490297        dy:-0.0000000000000000000       pos:-0.1254321038722991943, 0.4807345271110534668, 0.8678485155105590820        cam:-0.2573373615741729736, -0.8605828881263732910, 0.4395162761211395264       cw:1
+                vec3(pl, -0.1254321038722991943, 0.4807345271110534668, 0.8678485155105590820);
+                vec3(camRef,-0.2573373615741729736, -0.8605828881263732910, 0.4395162761211395264);
+                pw = 1;
+                moveEntity(-0.0026313879061490297,0,pl,pl2,camRef,&pw,plp);
+            }
 
 
             facingAngle[2]=0;
@@ -1848,7 +1935,7 @@ int main(){
                 }
             }
             else {
-                for(int n = 0; n < 6; n++) axi[n] = 0;
+                //for(int n = 0; n < 6; n++) axi[n] = 0;
                 dx = dy = 0;
             }
             //A:0
@@ -1867,6 +1954,15 @@ int main(){
             //D down:13
             //D left:14
             //
+
+            if(kx != 0 || ky !=0){
+                dx = kx*ps;
+                dy = ky*ps;
+                if(kx != 0 && ky != 0){
+                    dx /= sr2;
+                    dy /= sr2;
+                }
+            }
 
             if(facingAngle[2] > 0){
                 //printf("%f\t%f\n",facingAngle[0],facingAngle[1]);
@@ -1892,28 +1988,19 @@ int main(){
                         matxpt(roti,pl2);
                         backOnSphere(pl2);
                     }
-                    if(duppw>=0){
-                        if(worldCurvatures[duppw]==0 || 1){
-                            //jank bandaid solution:
-                            moveEntity(ped*facingAngle[3],ped*facingAngle[4],pl,pl2,camRef,&pw,plp);
-                            moveEntity(-ped*facingAngle[3],-ped*facingAngle[4],pl,pl2,camRef,&pw,plp);
-                            //printf("\n");
-                        }
+                    if(duppw >= 0 && dx == 0 && dy == 0){
+                        updateDuplicateRot(pl,pl2,duppl,duppl2,pw,iopip);
                     }
                 }
                 facingAngle[2]=0;
             }
-            if(kx != 0 || ky !=0){
-                dx = kx*ps;
-                dy = ky*ps;
-                if(kx != 0 && ky != 0){
-                    dx /= sr2;
-                    dy /= sr2;
-                }
-            }
             if(dy!=0||dx!=0) {
                 //movePlayer(dx,dy,0);
                 moveEntity(dx,dy,pl,pl2,camRef,&pw,plp);
+                //printP(pl);
+                //printP(camRef);
+                //printP(duppl);
+                //printf("%i\t%i\n",pw,duppw);
             }
             if(glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && zoom<1) zoom+=pow(2,floor(log2(zoom)-4));
             if(glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS && zoom>pr/pi) zoom-=pow(2,floor(log2(zoom)-4));
@@ -1934,10 +2021,10 @@ int main(){
         glfwGetFramebufferSize(window, &width, &height);
         if(width!=widthp||height!=heightp) {
             glUniform1i(glGetUniformLocation(shaderProgram, "res"),std::min(width,height));
-            std::cout<<"window dim:\n"<<width<<"\tx\t"<<height<<"\n";
+            printf("window dim:\n%i\tx\t%i\n",width,height);
             for(int n=0;n<paw[(int)paw[0]-1];n++) {
-                if((int)paw[n]==paw[n]) std::cout<<n<<"\t"<<(int)paw[n]<<"\n";
-                else std::cout<<n<<"\t"<<paw[n]<<"\n";
+                if((int)paw[n]==paw[n]) printf("%i\t%i\n",n,(int)paw[n]);
+                else printf("%i\t%f\n",n,paw[n]);
             }
         }
         // rendering commands here
