@@ -6,6 +6,7 @@
 //for linux: g++ -O3 -w code.cpp glad.c -o nightgun -lglfw
 #include <iostream>
 #include "glad.h"
+#include "glad.c"
 #include "glfw3.h"
 #include <cmath>
 #include <fstream>
