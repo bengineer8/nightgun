@@ -3,7 +3,7 @@
 //^to get g++ working on Windows, follow this but only inclusively to "Check your MinGW installation": https://code.visualstudio.com/docs/cpp/config-mingw
 //to run, open the folder this file is in, alt+d, type "cmd", hit enter, copy the compile command, and hit enter
 
-//for linux: g++ -O3 -w code.cpp glad.c -o nightgun -lglfw
+//for linux: g++ -O3 -w code.cpp -o nightgun -lglfw
 #include <iostream>
 #include "glad.h"
 #include "glad.c"
