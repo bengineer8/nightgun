@@ -2,7 +2,7 @@ Windows:
     0. Up until you completed "Check your MinGW installation", follow the instructions at https://code.visualstudio.com/docs/cpp/config-mingw
     Note: after doing the above once, you won't have to do them again.
     1. In explorer, open the folder this text file and all the other files are in (probably open given you are reading this)
-    2. Copy this: g++ -O3 -w code.cpp -o nightgun.exe glad.c -static -L. -l glfw3dll
+    2. Copy this: g++ -O3 -w code.cpp -o nightgun.exe -static -L. -l glfw3dll
     3. Press alt + d
     4. Type cmd and hit enter
     5. Right click, this should paste what you copied
@@ -12,7 +12,7 @@ Linux:
     -1. Remember that you, like me, signed up for pain when you installed Linux.
     0. Download and install glfw, following the instructions listed in the top answer here: https://stackoverflow.com/questions/17768008/how-to-build-install-glfw-3-and-use-it-in-a-linux-project
     setup done
-    2. Commpand to compile: g++ -O3 -w code.cpp -o nightgun glad.c -lglfw
+    2. Commpand to compile: g++ -O3 -w code.cpp -o nightgun -lglfw
     cmake -G "Unix Makefiles"
 
 Mac:
