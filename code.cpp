@@ -1,5 +1,5 @@
-//to compile for windows on Linux: x86_64-w64-mingw32-g++ -O3 -w code.cpp glad.c -o nightgun.exe -static -L. -l glfw3dll
-//to compile on Windows: g++ -O3 -w code.cpp glad.c -o nightgun.exe -static -L. -l glfw3dll
+//to compile for windows on Linux: x86_64-w64-mingw32-g++ -O3 -w code.cpp -o nightgun.exe -static -L. -l glfw3dll
+//to compile on Windows: g++ -O3 -w code.cpp -o nightgun.exe -static -L. -l glfw3dll
 //^to get g++ working on Windows, follow this but only inclusively to "Check your MinGW installation": https://code.visualstudio.com/docs/cpp/config-mingw
 //to run, open the folder this file is in, alt+d, type "cmd", hit enter, copy the compile command, and hit enter
 
