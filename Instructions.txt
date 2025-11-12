@@ -16,4 +16,4 @@ Linux:
     cmake -G "Unix Makefiles"
 
 Mac:
-    coming soon
+    coming not any time soon
