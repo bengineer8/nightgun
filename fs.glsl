@@ -5,22 +5,26 @@
 const float tpi=6.283185307;//two pi
 const int shaderDataLength=8*128+8*4096+4*8192;
 const int sizeOfpow = 14;
-const float pr=1.0/9.0, prc=cos(pr);
+const float pr = 1.0/9.0, prc = cos(pr), prch = cosh(pr);
 const float wallthickness=1/18.0;
 const float wallcornershad=1.0/9;
 const float coswallthickness=cos(wallthickness);
 const float coswallcornershad=cos(wallcornershad);
+const float coshwallthickness=cosh(wallthickness);
+const float coshwallcornershad=cosh(wallcornershad);
 const float inf = 1.0/0;
 //const vec4 bgcolor=vec4(0,.125,0.498,1);
 const vec4 bgcolor=vec4(0,0,0,1);
-const int cellCount = 211;
 out vec4 FragColor;
 uniform int res=800;
 uniform float T=1.0,pz,pcx,pcy,pcz,zoom=1.0;
 uniform vec3 pl,pl2,camRef,duppl,duppl2;
 uniform int pw;//player world
 uniform int duppw;
-uniform float mirrorPlayer=1;//-1 for mirror player
+uniform float mirrorPlayer = 1;//-1 for mirror player
+uniform float mirrorDup = 1;
+uniform int iopip;
+uniform int diopip;
 
 layout (std430, binding=3) buffer ssbo1
 {
@@ -57,11 +61,11 @@ mat3 h2invert(mat3 a){//if a is a combination of rotations and translations in h
     return b;
 }
 
-float innerdot(vec3 a, vec3 b){
-    return dot(a,b*vec3(1,1,-1));
+float lidot(vec3 a, vec3 b){
+    return dot(a,b*vec3(-1,-1,1));
 }
 
-vec3 lcross(vec3 a, vec3 b){
+vec3 icross(vec3 a, vec3 b){
     return cross(a,b)*vec3(1,1,-1);
 }
 
@@ -116,80 +120,42 @@ mat3 s2matto(int i){
     //return mat3(1,0,0, 0,1,0, 0,0,1);
 }
 
-bool e2pbc(vec3 pi, vec3 pf, int w){//e2 portal between check, checks if there is a portal between 2 points in world w
-    bool yes=false;//coding is my passion
-    mat3 rot;
-    float d;
-    {
-        vec3 v=(pf-pi);
-        d=length(v);
-        v/=d;
-        rot=mat3(v.x,-v.y,0,v.y,v.x,0,0,0,1);
+bool s2PortalBetween(vec3 A, vec3 B, int i){
+    if(i > 0){
+        vec3 p1 = {positions[i], positions[i + 1], positions[i + 2]}, p2 = {positions[i + 3], positions[i + 4], positions[i + 5]};
+        float k = dot(p1,p2);
+        if((dot(A,p1) - k)*(dot(B,p1) - k) < 0) return true;
     }
-    int I=int(positions[w]);
-    while(I<int(positions[w+1])&&!yes){
-        vec3 p1=vec3(positions[I],positions[I+1],0), p2=vec3(positions[I+3],positions[I+4],0);
-        float r=distance(p1,p2);
-        int type=int(positions[I+7])&3;
-        float al=positions[I+6];//angle limit, not an angle.
-        p1=rot*(p1-pi);p2=rot*(p2-pi);//this is the reverse order it is done in the main function
-        if(type==0 && abs(p1.y)<r && (p2.y*p2.y<=al*r*r || al==4)){
-            float o=sqrt(r*r-p1.y*p1.y), xt=p1.x-o;
-            if(((al==4) || ((xt-p2.x)*(xt-p2.x)+p2.y*p2.y<al*r*r)) && xt>0 && xt<d) {
-                yes=true;
-            }
-            xt=p1.x+o;
-            if(((al==4) || ((xt-p2.x)*(xt-p2.x)+p2.y*p2.y<al*r*r)) && xt>0 && xt<d) {
-                yes=true;
-            }
-        }
-        if(type==1 && p1.y*p2.y<=0 && (p1.x>0||p2.x>0)){
-            float xt=(p1.x-p2.x)*p2.y/(p2.y-p1.y)+p2.x;
-            if(xt>0 && xt<d){
-                yes=true;
-            }
-        }
-        I += sizeOfpow;
-    }
-    return yes;
-}//a lot of this is copying code from earlier. Might generalize later and spin out the reused code as its own function
-
-bool s2pbc(vec3 pi, vec3 pf, int w){//s2 portal between check
-    bool yes=false;//:P
-    mat3 rot=s2matto(pi);
-    pf=rot*pf;
-    float c=sqrt(pf.x*pf.x+pf.y*pf.y), s;
-    float disrank=s2disrank(pf.z,c);
-    c=1/c;
-    s=pf.y*c;
-    c*=pf.x;
-    rot=mat3(c,-s,0, s,c,0, 0,0,1)*rot;
-    int I=int(positions[w]);
-    while(I<int(positions[w+1]) && !yes){
-        vec3 p1=vec3(positions[I],positions[I+1],positions[I+2]), p2=vec3(positions[I+3],positions[I+4],positions[I+5]);
-        float rc=dot(p1,p2);
-        float rs=1-rc*rc;//actually rs^2, just reusing space
-        p1=rot*p1;
-        p2=rot*p2;
-        if(p1.y*p1.y<rs){
-            vec3 cipp, cipm;//closest intersection point plus and minus
-            float s=sqrt(rs-p1.y*p1.y), D=1/(1-p1.y*p1.y);
-            cipp=vec3(p1.x*rc+p1.z*s,0,p1.z*rc-p1.x*s)*D;
-            cipm=vec3(p1.x*rc-p1.z*s,0,p1.z*rc+p1.x*s)*D;
-            float al=positions[I+6];//angle limit, (cos(a)-1), decreases with angle
-            float ala=1+rs*al;
-            if( (al==-2 || dot(cipp,p2)>ala ) && s2disrank(cipp.z,cipp.x)<disrank){//either not the source portal or the other point is closer
-                yes=true;
-            }
-            if( (al==-2 || dot(cipm,p2)>ala ) && s2disrank(cipm.z,cipm.x)<disrank){//either not the source portal or the other point is closer
-                yes=true;
-            }
-        }
-        I += sizeOfpow;
-    }
-    return yes;
+    return false;
 }
 
+
+bool e2PortalBetween(vec3 A, vec3 B, int i){
+    if(i > 0){
+        vec3 p1 = {positions[i], positions[i + 1], positions[i + 2]}, p2 = {positions[i + 3], positions[i + 4], positions[i + 5]};
+        int type = int(positions[i + 7])&1;
+        float k,a,b;
+        if(type == 0){
+            k = distance(p1,p2);
+            a = distance(A,p1);
+            b = distance(B,p1);
+        } else{
+            p2 = mat3(0,1,0, -1,0,0, 0,0,1)*(p2 - p1);
+            k = dot(p1,p2);
+            a = dot(A,p2);
+            b = dot(B,p2);
+        }
+        if((a - k)*(b - k) < 0) return true;
+
+    }
+    return false;
+}
+
+float e2side(vec3 a, vec3 b, vec3 c){
+    b = mat3(0,-1,0, 1,0,0, 0,0,1)*(b - a);
+    c -= a;
+    return sign(dot(b,c));
+}
 
 mat3 h2matto(vec3 p){
     float r = sqrt(p.x*p.x + p.y*p.y), c = p.x/r, s = p.y/r;
@@ -200,8 +166,16 @@ mat3 h2matto(vec3 p){
     return mat3(p.z*c,-s,-p.x, p.z*s,c,-p.y, -r,0,p.z);
 }
 
+bool h2PortalBetween(vec3 A, vec3 B, int i){
+    if(i > 0){
+        vec3 p1 = {positions[i], positions[i + 1], positions[i + 2]}, p2 = {positions[i + 3], positions[i + 4], positions[i + 5]};
+        float k = lidot(p1,p2);
+        if((lidot(A,p1) - k)*(lidot(B,p1) - k) < 0) return true;
+    }
+    return false;
+}
+
 void main(){
-    int wallIndexes[64];
     int current_world=pw;
     vec2 screenPos=vec2(2.0*gl_FragCoord.x/float(res)-1.0,2.0*gl_FragCoord.y/float(res)-1.0);
     float t,I,od,mirror=mirrorPlayer;//make mirror -1 for mirror
@@ -252,16 +226,11 @@ void main(){
                 int i=int(positions[current_world]),cii=-1;
                 vec3 cip1,cip2;
                 float cid=d;
-                wallIndexes[0]=0;
+                //for(int g = 0; g < 32 && i < int(positions[current_world + 1]) && iterations < 9; g++){
                 while(i<int(positions[current_world+1]) && iterations<9){
                     vec3 p1=vec3(positions[i],positions[i+1],0), p2=vec3(positions[i+3],positions[i+4],0);
                     t=distance(p1,p2);
-                    type = int(positions[i+7])&7;
-                    if(type > 3){
-                        type -= 4;
-                        wallIndexes[0]++;
-                        wallIndexes[wallIndexes[0]]=i;
-                    }
+                    type = int(positions[i + 7])&3;
                     float al=positions[i+6];//angle limit, not an angle.
                     p1=rot*(p1)+off;p2=rot*(p2)+off;
                     if(type == 0 && abs(p1.y)<t&&(p2.y*p2.y<=al*t*t || al==4)){
@@ -537,7 +506,7 @@ void main(){
                 float dc = exp(d), ds = 1/dc;
                 dc = (dc + ds)*0.5; ds = dc - ds;
                 //^cosh and sinh of d, done weird to remove redundant calculation
-                float k = innerdot(sp1,sp2);
+                float k = lidot(sp1,sp2);
                 mat3 rot;
                 if(type > 0){
                     vec3 tempvec = sp1;
@@ -549,29 +518,29 @@ void main(){
                 t = length(sp2*vec3(1,1,0));
                 sp2 /= t;
                 rot = mat3(sp2.x,-sp2.y,0, sp2.y,sp2.x,0, 0,0,1)*rot;
-                if(type == 2) rot = mat3(t,0,k, 0,1,0, k,0,t)*rot;
-                rot = lm*rot;
                 if(type == 2) rot = mat3(t,0,-k, 0,1,0, -k,0,t)*rot;
-                if(type == 0 && si > 0) rot = mat3(-k,0,-t, 0,1,0, -t,0,-k)*rot;
+                rot = lm*rot;
+                if(type == 2) rot = mat3(t,0,k, 0,1,0, k,0,t)*rot;
+                if(type == 0 && si > 0) rot = mat3(k,0,-t, 0,1,0, -t,0,k)*rot;
                 if(si > 0) rot = am*rot;
                 vec3 cip1, cip2, cip;
                 cip.x = ds;
                 int cii = -1;
                 int i = int(positions[current_world]);
                 while(i < int(positions[current_world + 1])){
-                    type = int(positions[i + 7])&3;
+                    //type = int(positions[i + 7])&3;
                     float limit = positions[i + 6];
                     vec3 p1 = vec3(positions[i],positions[i + 1],positions[i + 2]), p2 = vec3(positions[i + 3],positions[i + 4],positions[i + 5]);
-                    k = innerdot(p1,p2);
+                    k = lidot(p1,p2);
                     p1 = rot*p1; p2 = rot*p2;
                     float o = sqrt(k*k - p1.z*p1.z + p1.x*p1.x);
-                    float tR = (-k + o)/(p1.z - p1.x), itR = 1/tR;
-                    float tL = (-k + o)/(p1.z + p1.x), itL = 1/tL;
+                    float tR = (k + o)/(p1.z - p1.x), itR = 1/tR;
+                    float tL = (k + o)/(p1.z + p1.x), itL = 1/tL;
                     vec3 cipR, cipL;
                     cipR.y = 0; cipL.y = 0;
                     cipR.x = (tR - itR)*0.5; cipR.z = cipR.x + itR;
                     cipL.x = -(tL - itL)*0.5; cipL.z = cipL.x + tL;
-                    bool risvalid = tR > 0 && limit < innerdot(p2,cipR), lisvalid = tL > 0 && limit < innerdot(p2,cipL);
+                    bool risvalid = tR > 0 && limit > lidot(p2,cipR), lisvalid = tL > 0 && limit > lidot(p2,cipL);
                     if(risvalid && 0 < cipR.x && cipR.x < cip.x && (i != si || (lisvalid && cipL.z < cipR.z) ) ){
                         cip = cipR;
                         cii = i;
@@ -589,83 +558,62 @@ void main(){
                 //...
                 if(cii > 0){
                     int dat = int(positions[cii + 7]);
-                    type = dat&3;
-                    current_world=(dat>>3)&511;
-                    int di = int(positions[current_world]) + sizeOfpow*(dat>>12)&1023;
-                    sp1 = vec3(positions[di],positions[di + 1],positions[di + 2]);
-                    sp2 = vec3(positions[di + 3],positions[di + 4],positions[di + 5]);
-                    si = di;
-                    float side = 1;
-                    if(((dat>>22)&1)==1) side = -1;
-                    mirror = 1;
-                    if(((dat>>23)&1)==1) mirror = -1;
-                    d -= acosh(cip.z);
-                    k = innerdot(cip1,cip2);
-                    float k2 = k*k;
-                    float cL = -innerdot(cip,cip2), sL = 1;
-                    if(type == 0){
-                        cL = (cL - k2)/(1 - k2);
-                        sL = 1 - cL*cL;
+                    type = dat&7;
+                    if(type > 3){
+                        d = 0;
+                        FragColor = vec4(0,0,0,1);
+                        hitwall = true;
+                        //...
+                    } else {
+                        current_world=(dat>>3)&511;
+                        int di = int(positions[current_world]) + sizeOfpow*(dat>>12)&1023;
+                        sp1 = vec3(positions[di],positions[di + 1],positions[di + 2]);
+                        sp2 = vec3(positions[di + 3],positions[di + 4],positions[di + 5]);
+                        si = di;
+                        float side = 1;
+                        if(((dat>>22)&1)==1) side = -1;
+                        mirror = 1;
+                        if(((dat>>23)&1)==1) mirror = -1;
+                        d -= acosh(cip.z);
+                        k = lidot(cip1,cip2);
+                        float k2 = k*k;
+                        float cL = lidot(cip,cip2), sL = 1;
+                        if(type == 0){
+                            cL = (cL - k2)/(1 - k2);
+                            sL = 1 - cL*cL;
+                        }
+                        if(type == 1){//horocycle
+                            sL = 2*cL - 2;
+                        }
+                        if(type == 2){//hypercycle
+                            cL = (cL + k2)/(k2 + 1);
+                            sL = cL*cL - 1;
+                        }
+                        //jank V
+                        sL = safe_sqrt(sL) * sign(-lidot(icross(cip1,cip2),cip))*side*mirror;
+                        if(type == 0){//circle
+                            lm = mat3(cL,-sL,0, sL,cL,0, 0,0,1);
+                        }
+                        if(type == 1){//horocycle
+                            lm = mat3(1 - sL*sL/2,-sL,-sL*sL/2, sL,1,sL,  sL*sL/2,sL,1 + sL*sL/2);
+                        }
+                        if(type == 2){//hypercycle
+                            lm = mat3(1,0,0, 0,cL,sL, 0,sL,cL);
+                        }
+                        //calculate the sign and cos of the hit angle in a sense
+                        cip1 = mat3(cip.z,0,-cip.x, 0,1,0, -cip.x,0,cip.z) * cip1;
+                        if(type > 0) cip1 = -cip1;
+                        cip1 = normalize(cip1*vec3(1,1,0));
+                        am = mat3(-cip1.x,mirror*-cip1.y,0, mirror*cip1.y,-cip1.x,0, 0,0,side)*side;
+                        //FragColor = vec4(Mod((cL),1),0,sL,1);
+                        //FragColor = vec4(0*cL,1,sL,1);
+                        //FragColor = vec4(-am[1][0],0,am[1][0],1);
+                        //d = 0;hitwall = true;
                     }
-                    if(type == 1){//horocycle
-                        sL = 2*cL - 2;
-                    }
-                    if(type == 2){//hypercycle
-                        cL = (cL + k2)/(k2 + 1);
-                        sL = cL*cL - 1;
-                    }
-                    sL = safe_sqrt(sL) * sign(innerdot(lcross(cip1,cip2),cip))*side*mirror;
-                    if(type == 0){//circle
-                        lm = mat3(cL,-sL,0, sL,cL,0, 0,0,1);
-                    }
-                    if(type == 1){//horocycle
-                        lm = mat3(1 - sL*sL/2,-sL,-sL*sL/2, sL,1,sL,  sL*sL/2,sL,1 + sL*sL/2);
-                    }
-                    if(type == 2){//hypercycle
-                        lm = mat3(1,0,0, 0,cL,sL, 0,sL,cL);
-                    }
-                    //calculate the sign and cos of the hit angle in a sense
-                    cip1 = mat3(cip.z,0,-cip.x, 0,1,0, -cip.x,0,cip.z) * cip1;
-                    if(type > 0) cip1 = -cip1;
-                    cip1 = normalize(cip1*vec3(1,1,0));
-                    am = mat3(-cip1.x,mirror*-cip1.y,0, mirror*cip1.y,-cip1.x,0, 0,0,side)*side;
-                    //FragColor = vec4(Mod((cL),1),1,sL,1);
-                    //FragColor = vec4(0*cL,1,sL,1);
-                    //FragColor = vec4(-am[1][0],0,am[1][0],1);
-                    //d = 0;hitwall = true;
                 }
-                else{
-                //<temp>
-                endOfRay = h2invert(rot)*vec3(ds,0,dc);
-                d = safe_sqrt(endOfRay.z*endOfRay.z - 1);
-                float x = endOfRay.x/d, y = endOfRay.y/d;
-                float D = 1 - asinh(d)/2.5;
-                D = sign(D);
-                d = d/(endOfRay.z + 1);
-                x = d*x, y = d*y;
-                //^hyperboloid to poincare disk
-                vec2 V = vec2(x*(1 - y) + x*(y + 1), 1 - y*y - x*x)/( (1 - y)*(1 - y) + x*x);
-                //^disk to half plane
-                float l = floorlog2(V.y);
-                float R = Mod(l,2);
-                float G = Mod(V.x/exponentialFloorb2(V.y),2);
-                float B = Mod(V.x/exponentialFloorb2(V.y),1);
-                if(G > 1){
-                    G = 0;
-                } else B = 0;
-                FragColor = vec4(R,G,B,1/D)*max(D,0)+0.1;
-                if(innerdot(endOfRay,pl) > -cosh(pr) && pw == current_world)
-                    FragColor = vec4(0,1,1,1);
-                d=0;
-                /*float dfcc = 9;
-                for(int n = 0; n < cellCount; n++){
-                    dfcc = min(dfcc,-innerdot(endOfRay,cells[n]));
-                }
-                dfcc = 1/dfcc;
-                //if(asinh(safe_sqrt(endOfRay.z*endOfRay.z - 1))<3)
-                FragColor = vec4(dfcc,dfcc,dfcc,1);*/
-                //FragColor *= dfcc*dfcc*dfcc*dfcc;
-                //</temp>
+                else {
+                    endOfRay = h2invert(rot)*vec3(ds,0,dc);
+                    d = 0;
                 }
             }//end of h2
         }//end big while
@@ -715,14 +663,16 @@ void main(){
                     }
                     i += sizeOfpow;
                 }
-                if(distance(endOfRay,pl) < pr && current_world == pw && !e2pbc(endOfRay,pl,pw)){
-                    float grad=1-distance(endOfRay,pl)/pr;
-                    if(distance(endOfRay,pl2) < pr) FragColor=vec4(1,grad,1,1);
-                    else FragColor=vec4(0,grad,1,1);
-                } else if(distance(endOfRay,duppl) < pr && current_world == duppw && e2pbc(endOfRay,duppl,duppw)){
-                    float grad=1-distance(endOfRay,duppl)/pr;
-                    if(distance(endOfRay,duppl2) < pr) FragColor=vec4(1,grad,1,1);
-                    else FragColor=vec4(0,grad,1,1);
+                if(distance(endOfRay,pl) < pr && current_world == pw && !e2PortalBetween(endOfRay,pl,iopip)){
+                    float grad = distance(endOfRay,pl)/pr;
+                    float side = mirrorPlayer*e2side(pl,pl2,endOfRay);
+                    if(distance(endOfRay,pl2) < pr) FragColor=vec4(1,grad,side,1);
+                    else FragColor=vec4(0,grad,side,1);
+                } else if(distance(endOfRay,duppl) < pr && current_world == duppw && e2PortalBetween(endOfRay,duppl,diopip)){
+                    float grad = distance(endOfRay,duppl)/pr;
+                    float side = mirrorDup*e2side(duppl,duppl2,endOfRay);
+                    if(distance(endOfRay,duppl2) < pr) FragColor=vec4(1,grad,side,1);
+                    else FragColor=vec4(0,grad,side,1);
                 } else {
                     vec2 z = vec2(endOfRay.x,endOfRay.y);
                     int N = 30, n = N;
@@ -735,8 +685,13 @@ void main(){
                     I=float(n)/float(N);
                     float test = positions[66559];
                     if(dot(endOfRay,endOfRay) < tpi*tpi){
-                        FragColor = vec4((endOfRay.x+current_world)/3, (.5+test/2)*float((int(floor(endOfRay.x))%2+int(floor(endOfRay.y+current_world))%2+6)%2)/2+I/2+0.01,(endOfRay.y)/3,1);
+                        FragColor = vec4((endOfRay.x+current_world)/6, (.5+test/2)*float((int(floor(endOfRay.x))%2+int(floor(endOfRay.y+current_world))%2+6)%2)/2+I/2+0.01,(endOfRay.y)/6,1);
                     }else FragColor=vec4(0.5,0.5,0.5,1);
+                    /*{
+                        vec2 P = vec2(endOfRay.x,endOfRay.y);
+                        P = mod(P + 6, 12) - 6;
+                        FragColor = vec4((P.x+current_world)/6, (.5+test/2)*float((int(floor(P.x))%2+int(floor(P.y+current_world))%2+6)%2)/2+I/2+0.01,(P.y)/6,1);
+                    }//*/
                     if(nearstWallIndex > 0){
                         i = nearstWallIndex;
                         vec2 p1 = vec2(positions[i],positions[i+1]),
@@ -780,14 +735,14 @@ void main(){
                             B = rc - A * Retro;
                             closestPoint = A*endOfRay + B*p1;
                             float al = positions[i+6], ala = 1 + al*rss;
-                            if(al>-2 && dot(closestPoint,p2) < ala){
+                            if(al > -2 && dot(closestPoint,p2) < ala){
                                 vec3 ep1 = vec3(positions[i + 8],positions[i + 9],positions[i + 10]);
                                 vec3 ep2 = vec3(positions[i + 11],positions[i + 12],positions[i + 13]);
                                 if(dot(ep1,endOfRay) > dot(ep2,endOfRay)) closestPoint = ep1;
                                 else closestPoint = ep2;
                             }
                             float cosDisToCP = dot(endOfRay, closestPoint);
-                            if(cosDisToCP > codtccp*1.00001 && Retro < pr){//no "z" fighting and bounds checking
+                            if(cosDisToCP > codtccp*1.000001){//no "z" fighting and bounds checking
                                 nearstWallIndex = i;
                                 closestClosestPoint = closestPoint;
                                 codtccp = cosDisToCP;
@@ -795,19 +750,21 @@ void main(){
                         }
                         i += sizeOfpow;
                     }
-                    if(dot(endOfRay,pl)>prc && current_world==pw && !s2pbc(endOfRay,pl,current_world)){
-                        float grad = 1 - smallArccos(dot(endOfRay,pl))/pr;
-                        if(dot(endOfRay,pl2) > prc) FragColor = vec4(1,grad,1,1);
-                        else FragColor=vec4(0,grad,1,1);
-                    } else if(dot(endOfRay,duppl)>prc && current_world==duppw && s2pbc(endOfRay,duppl,current_world)){
-                        float grad = 1 - smallArccos(dot(endOfRay,duppl))/pr;
-                        if(dot(endOfRay,duppl2)>prc) FragColor = vec4(1,grad,1,1);
-                        else FragColor = vec4(0,grad,1,1);
+                    if(dot(endOfRay,pl)>prc && current_world==pw && !s2PortalBetween(endOfRay,pl,iopip)){
+                        float grad = smallArccos(dot(endOfRay,pl))/pr;
+                        float side = -mirrorPlayer*sign(dot(cross(pl,pl2),endOfRay));
+                        if(dot(endOfRay,pl2) > prc) FragColor = vec4(1,grad,side,1);
+                        else FragColor=vec4(0,grad,side,1);
+                    } else if(dot(endOfRay,duppl)>prc && current_world==duppw && s2PortalBetween(endOfRay,duppl,diopip)){//BUG: disappears if very close to portal edge
+                        float grad = smallArccos(dot(endOfRay,duppl))/pr;
+                        float side = -mirrorDup*sign(dot(cross(duppl,duppl2),endOfRay));
+                        if(dot(endOfRay,duppl2)>prc) FragColor = vec4(1,grad,side,1);
+                        else FragColor = vec4(0,grad,side,1);
                     } else {
                         float k=sign(endOfRay.x*endOfRay.y*endOfRay.z);
                         vec3 color = (sign(endOfRay) + 1 - endOfRay)/2;
                         FragColor = vec4(color.x,color.y,color.z,1);
-                        if(nearstWallIndex>0) {
+                        if(nearstWallIndex > 0) {
                             if(codtccp > coswallthickness){
                             vec3 p1 = vec3(positions[nearstWallIndex],positions[nearstWallIndex + 1],positions[nearstWallIndex + 2]),
                             p2 = vec3(positions[nearstWallIndex + 3],positions[nearstWallIndex + 4],positions[nearstWallIndex + 5]);
@@ -820,9 +777,121 @@ void main(){
                     }
                 }
             }
+            if(iaunit < 0){
+                d = safe_sqrt(endOfRay.z*endOfRay.z - 1);
+                float x = endOfRay.x/d, y = endOfRay.y/d;
+                d = d/(endOfRay.z + 1);
+                x = d*x, y = d*y;
+                //^hyperboloid to poincare disk
+                vec2 V = vec2(x*(1 - y) + x*(y + 1), 1 - y*y - x*x)/( (1 - y)*(1 - y) + x*x);
+                //^disk to half plane
+                float l = floorlog2(V.y);
+                float R = Mod(l,2);
+                float G = Mod(V.x/exponentialFloorb2(V.y),2);
+                float B = Mod(V.x/exponentialFloorb2(V.y),1);
+                if(G > 1){
+                    G = 0;
+                } else B = 0;
+                if(endOfRay.z < cosh(3)) FragColor = vec4(R,G,B,1);
+                else FragColor = vec4(0.1,0.1,0.1,1);
+                vec3 closestPoint;
+                float coshdis = coshwallcornershad;
+                while(i < positions[current_world + 1]){
+                    type = int(positions[i + 7])&7;
+                    if(type > 3){
+                        vec3 p1 = vec3(positions[i],positions[i + 1],positions[i + 2]),
+                        p2 = vec3(positions[i + 3],positions[i + 4],positions[i + 5]);
+                        float
+                        limit = positions[i + 6],
+                        k = lidot(p1,p2),
+                        id1 = lidot(endOfRay,p1),
+                        id2 = lidot(p1,p1),
+                        A = id1*id1 - id2,
+                        B = sqrt( (k*k - id2)/A ),
+                        C;
+                        if(type == 5) C = (id1*id1 - k*k)/(2*A*k);
+                        else C = (k - B*id1)/id2;
+                        vec3 cp = B*endOfRay + C*p1;
+                        if(lidot(cp,p2) > limit){
+                            int off;
+                            if(lidot(icross(p1,p2),cp) > 0) off = 8;
+                            else off = 11;
+                            cp = vec3(positions[i + off], positions[i + off + 1], positions[i + off + 2]);
+                        }
+                        float cd = lidot(endOfRay,cp);
+                        if(cd < 0.999*coshdis){
+                            coshdis = cd;
+                            nearstWallIndex = i;
+                            closestPoint = cp;
+                        }
+                        //...
+                    }
+                    //...
+                    i += sizeOfpow;
+                }
+                if(nearstWallIndex > 0){
+                    i = nearstWallIndex;
+                    vec3 p1 = vec3(positions[i],positions[i + 1],positions[i + 2]),
+                    p2 = vec3(positions[i + 3],positions[i + 4],positions[i + 5]);
+                    float k = lidot(p1,p2);
+                    type = int(positions[i + 7])&3;
+                    if(coshdis < coshwallthickness){
+                        float k2 = k*k;
+                        float cL = lidot(closestPoint,p2), sL = 1;
+                        if(type == 0){
+                            cL = (cL - k2)/(1 - k2);
+                            sL = 1 - cL*cL;
+                        }
+                        if(type == 1){//horocycle
+                            sL = 2*cL - 2;
+                        }
+                        if(type == 2){//hypercycle
+                            cL = (cL + k2)/(k2 + 1);
+                            sL = cL*cL - 1;
+                        }
+                        //jank V
+                        sL = safe_sqrt(sL) * sign(lidot(icross(p1,p2),closestPoint));
+                        if(type == 0){//circle
+                            FragColor = vec4(cL,0,sL,1);
+                        }
+                        if(type == 1){//horocycle
+                            sL = 2*sign(sL)*mod(sL,.5);
+                            FragColor = vec4(sL,0,-sL,1);
+                        }
+                        if(type == 2){//hypercycle
+                            FragColor = vec4(2*mod(acosh(cL),.5),0,sign(sL),1);
+                        }
+                    } else {
+                        k = (safe_sqrt(2*coshdis - 2))/(wallcornershad);
+                        FragColor *= vec4(k,k,k,1);
+                    }
+                    //...
+                }
+                float grad = lidot(endOfRay,pl);
+                if(grad < prch && pw == current_world && !h2PortalBetween(pl,endOfRay,iopip)){
+                    grad = sqrt(2*grad - 2)/pr;
+                    float side = mirrorPlayer*sign(lidot(icross(pl,pl2),endOfRay));
+                    if(lidot(endOfRay,pl2) < prch) FragColor = vec4(1,grad,side,1);
+                    else FragColor = vec4(0,grad,side,1);
+                }
+                grad = lidot(endOfRay,duppl);
+                if(grad < prch && duppw == current_world && h2PortalBetween(duppl,endOfRay,diopip)){
+                    grad = sqrt(2*grad - 2)/pr;
+                    float side = mirrorDup*sign(lidot(icross(duppl,duppl2),endOfRay));
+                    if(lidot(endOfRay,duppl2) < prch) FragColor = vec4(1,grad,side,1);
+                    else FragColor = vec4(0,grad,side,1);
+                }
+                /*
+
+                            int off;
+                            if(h2side(p1,p2,cp) > 0) off = 8;
+                            else off = 11;
+                            vec3(cp, paw[i + off],paw[i + off + 1],paw[i + off + 2]);
+                */
+            }
         }
         if(iterations>8) FragColor = bgcolor;
-        if(iterations<1) FragColor=vec4(1,1,1,1);//banadaid
+        if(iterations<1) FragColor=vec4(0,0,1,1);//banadaid
     }
     else {//outside the view area
         FragColor = bgcolor;//8
