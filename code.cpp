@@ -313,28 +313,28 @@ void h2matto(float p[], double m[][3]){
     mat3(m, p[2]*c,-s,-p[0], p[2]*s,c,-p[1], -r,0,p[2]);
 }
 
-void lorenz(double& x, double& y, double c, double s){
+void lorentz(double& x, double& y, double c, double s){
     double t = x*c + y*s;
     y = x*s + y*c;
     x=t;
 }
 
-void lorenz(float& x, float& y, double c, double s){
+void lorentz(float& x, float& y, double c, double s){
     double t = x*c + y*s;
     y = x*s + y*c;
     x=t;
 }
 
-void lorenzXZ(double m[][3], double c, double s){
-    lorenz(m[0][0],m[0][2],c,s);
-    lorenz(m[1][0],m[1][2],c,s);
-    lorenz(m[2][0],m[2][2],c,s);
+void lorentzXZ(double m[][3], double c, double s){
+    lorentz(m[0][0],m[0][2],c,s);
+    lorentz(m[1][0],m[1][2],c,s);
+    lorentz(m[2][0],m[2][2],c,s);
 }
 
-void lorenzYZ(double m[][3], double c, double s){
-    lorenz(m[0][1],m[0][2],c,s);
-    lorenz(m[1][1],m[1][2],c,s);
-    lorenz(m[2][1],m[2][2],c,s);
+void lorentzYZ(double m[][3], double c, double s){
+    lorentz(m[0][1],m[0][2],c,s);
+    lorentz(m[1][1],m[1][2],c,s);
+    lorentz(m[2][1],m[2][2],c,s);
 }
 
 void idealrot(double m[3][3], double d){
@@ -720,7 +720,7 @@ void createDuplicate(double RL[], double RD, double p[], int ipi, int* w, double
         }
         vec3(pos1, sinh(RD),0,cosh(RD));
         vec3(pos2, prsh*p[0],prsh*p[1],prch);
-        lorenz(pos2[0],pos2[2], pos1[2],pos1[0]);
+        lorentz(pos2[0],pos2[2], pos1[2],pos1[0]);
         //...
         double k = lidot(p1,p2);
         double rot[3][3];
@@ -738,15 +738,15 @@ void createDuplicate(double RL[], double RD, double p[], int ipi, int* w, double
         switch(type){
             case 0:
                 rotXY(rot, RL[0],-RL[1]);
-                lorenzXZ(rot,k,-r);
+                lorentzXZ(rot,k,-r);
                 break;
             case 1:
                 idealrot(rot,-RL[1]);
                 break;
             case 2:
-                lorenzXZ(rot,r,-k);
-                lorenzYZ(rot,RL[0],RL[1]);
-                lorenzXZ(rot,r,k);
+                lorentzXZ(rot,r,-k);
+                lorentzYZ(rot,RL[0],RL[1]);
+                lorentzXZ(rot,r,k);
                 break;
             default:
                 printf("invalid type\n");
@@ -1011,7 +1011,7 @@ void moveEntity(double dx, double dy, float pos[], float pos2[], float ref[], in
                                     copypt(pos3,duppl2);
                                     iopip=i;//make this entity specific later
                                 }
-                            }
+                            } else inportal = 0;
                             if(inwall){
                                 d = sqrt(t);
                                 cp[0] -= posc[0];cp[1] -= posc[1];
@@ -1306,15 +1306,15 @@ void moveEntity(double dx, double dy, float pos[], float pos2[], float ref[], in
                             r = sqrt(pos2r[0]*pos2r[0] + pos2r[1]*pos2r[1]);
                             pos2r[0] /= r;pos2r[1] /= r;
                             pos2r[2] = pr;
-                        } else lorenzXZ(rot,k,-r);
+                        } else lorentzXZ(rot,k,-r);
                         break;
                     case 1:
                         idealrot(rot,EL[1]);
                         break;
                     case 2:
-                        lorenzXZ(rot,r,-k);
-                        lorenzYZ(rot,EL[0],-EL[1]);
-                        lorenzXZ(rot,r,k);
+                        lorentzXZ(rot,r,-k);
+                        lorentzYZ(rot,EL[0],-EL[1]);
+                        lorentzXZ(rot,r,k);
                         break;
                     default:
                         printf("invalid type\n");
@@ -1364,8 +1364,8 @@ void moveEntity(double dx, double dy, float pos[], float pos2[], float ref[], in
                 if(type > 3){
                     si = cii;
                     d -= acosh(cip[2]);
-                    lorenz(cip1[0],cip1[2],cip[2],-cip[0]);
-                    lorenzXZ(rot,cip[2],-cip[0]);
+                    lorentz(cip1[0],cip1[2],cip[2],-cip[0]);
+                    lorentzXZ(rot,cip[2],-cip[0]);
                     double r2 = cip1[0]*cip1[0] + cip1[1]*cip1[1];
                     double c = 2*cip1[1]*cip1[1]/r2 - 1, s = -2*cip1[0]*cip1[1]/r2;
                     rotXY(rot,c,-s);
@@ -1403,7 +1403,7 @@ void moveEntity(double dx, double dy, float pos[], float pos2[], float ref[], in
                     sL = safe_sqrt(sL)*h2side(cip1,cip2,cip);
                     EL[0] = cL;
                     EL[1] = sL*side*mirror;
-                    lorenz(cip1[0],cip1[2],cip[2],-cip[0]);
+                    lorentz(cip1[0],cip1[2],cip[2],-cip[0]);
                     if(type > 0){
                         cip1[0] = -cip1[0];
                         cip1[1] = -cip1[1];
@@ -1420,8 +1420,8 @@ void moveEntity(double dx, double dy, float pos[], float pos2[], float ref[], in
                 vec3(pos, ds,0,dc);
                 h2dadtopt(pos2r[2],pos2r[0],pos2r[1]*mirror,pos2);
                 vec3(ref, dx,-dy*mirror,sqrt(2));
-                lorenz(ref[0],ref[2],dc,ds);
-                lorenz(pos2[0],pos2[2],dc,ds);
+                lorentz(ref[0],ref[2],dc,ds);
+                lorentz(pos2[0],pos2[2],dc,ds);
                 matxpt(roti,pos);
                 matxpt(roti,pos2);
                 matxpt(roti,ref);
@@ -1687,21 +1687,24 @@ int main(){
 
     {//test stage
         std::vector<std::vector<float>> world0={
-            {0,2,0, 0.5,2,0, 2,mkdest(0,1,0,1,0)},//portal, type 0 (arc), linked to world1, index 0, other side = 1, mirror = 0
+            {0,2,0, 0.5,2,0, 2,mkdest(0,1,0,0,0)},//portal, type 0 (arc), linked to world1, index 0, other side = 1, mirror = 0
             {2,4,0, 0,4,0, 0,mkdest(1,0,1,0,1)},//portal, type 1(E2 line), linked to world 0, index 1 (itself), side = 0, mirror = 1
             {0,-5,0, 0,-4,0, 2,mkdest(0,0,3,0,0)},
             {3,-2,0, 2,-2,0, 2,mkdest(0,0,2,0,0)},
             {-2,5,0, -2,1,0, 0,mkdest(1,2,0,0,0)},
             {1,1,0, 2,1,0, 0,5},//E2 line wall
             {2,2,0, 3,2,0, 2,4},//arc wall
+            {-1.5,1,0, -2.5,1,0, 0,5},
+            {0,1,0, 0,1.7,0, 0,5},
         };
         pawbuffer.push_back(world0);
         worldCurvatures.push_back(0);//euclidian
         /////////////////////////
         std::vector<std::vector<float>> world1={
-        {0,0,1, 0,0.5,0.866025403784, -1,mkdest(0,0,0,1,0)}, //portal, type 0 (arc), linked to world0, index 0, other side = 1, mirror = 0
-        {0,0,1, 0,1,0, -0.5,4}, //arc wall
-        {-1,0,0, 0,isr2,-isr2, -0.292893218813,4}//arc wall
+            {0,0,-1, 0,0.5,0.866025403784, -1,mkdest(0,0,0,0,0)}, //portal, type 0 (arc), linked to world0, index 0, other side = 1, mirror = 0
+            {0,0,1, 0,1,0, -0.5,4}, //arc wall
+            {-1,0,0, 0,isr2,-isr2, -0.292893218813,4},//arc wall
+            {0,-1,0, -isr2,0,isr2, -0.1,4},
         };
         pawbuffer.push_back(world1);
         worldCurvatures.push_back(1);//spherical
@@ -1709,7 +1712,8 @@ int main(){
         //coments WIP
         std::vector<std::vector<float>> world2={
             {0,2,sqrt(4), 0,0,1, 3,mkdest(1,0,4,0,0)},//d*d/2 + 1 = -L for horocycles
-            {0,-3,sqrt(8), 0,-1,sqrt(2), 3,6}//hyperciclic wall
+            {0,3,-sqrt(8), 0,-1,sqrt(2), 3,6},//hyperciclic wall
+            {0.984237845,-1.983477923,-1.975578078, -2.004547132,2.004228044,3.005850910, 1.248541267,6},
         };
         pawbuffer.push_back(world2);
         worldCurvatures.push_back(-1);//hyperbolic
@@ -1990,7 +1994,7 @@ int main(){
             if(glfwGetKey(window, GLFW_KEY_O) == GLFW_PRESS) {
                 printP(pl);
                 //printP(pl2);
-                printP(camRef);
+                //printP(camRef);
                 //printP(duppl);
                 //printf("%i\t%i\n",pw,duppw);
             }
