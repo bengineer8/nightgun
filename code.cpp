@@ -1687,7 +1687,7 @@ int main(){
 
     {//test stage
         std::vector<std::vector<float>> world0={
-            {0,2,0, 0.5,2,0, 2,mkdest(0,1,0,0,0)},//portal, type 0 (arc), linked to world1, index 0, other side = 1, mirror = 0
+            {0,2,0, 0.5,2,0, 2,mkdest(0,1,0,1,0)},//portal, type 0 (arc), linked to world1, index 0, other side = 1, mirror = 0
             {2,4,0, 0,4,0, 0,mkdest(1,0,1,0,1)},//portal, type 1(E2 line), linked to world 0, index 1 (itself), side = 0, mirror = 1
             {0,-5,0, 0,-4,0, 2,mkdest(0,0,3,0,0)},
             {3,-2,0, 2,-2,0, 2,mkdest(0,0,2,0,0)},
@@ -1701,7 +1701,7 @@ int main(){
         worldCurvatures.push_back(0);//euclidian
         /////////////////////////
         std::vector<std::vector<float>> world1={
-            {0,0,-1, 0,0.5,0.866025403784, -1,mkdest(0,0,0,0,0)}, //portal, type 0 (arc), linked to world0, index 0, other side = 1, mirror = 0
+            {0,0,1, 0,0.5,0.866025403784, -1,mkdest(0,0,0,1,0)}, //portal, type 0 (arc), linked to world0, index 0, other side = 1, mirror = 0
             {0,0,1, 0,1,0, -0.5,4}, //arc wall
             {-1,0,0, 0,isr2,-isr2, -0.292893218813,4},//arc wall
             {0,-1,0, -isr2,0,isr2, -0.1,4},
