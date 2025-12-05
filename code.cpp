@@ -56,8 +56,9 @@ const char *vertexShaderSource = "#version 430 core\n"
     "   gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);\n"
     "}\0";
 float plo[3];//player orientation
-float pl[3],camRef[3],plp[1],duppl[3],paw[512];//player location, ..., player properties(mirror view flag (flip y)), duplicate player location, used for display purposes ,portals and walls
-float pl2[3],duppl2[3];
+double pl[3], pl2[3], camRef[3];
+double duppl[3],duppl2[3];
+float plp[1],paw[512];//player location, ..., player properties(mirror view flag (flip y)), duplicate player location, used for display purposes ,portals and walls
 float mirrorDup = 1;
 float fortyfivedegrot[][3]={{isr2,isr2,0},{-isr2,isr2,0},{0,0,1}};
 int pw, duppw, iopip = -1, diopip = -1;//index of portal intersecting player
@@ -133,6 +134,10 @@ void copypt(double p1[3], float p2[3]){
     p2[0]=p1[0];p2[1]=p1[1];p2[2]=p1[2];
 }
 
+void copypt(float p1[3], float p2[3]){
+    p2[0]=p1[0];p2[1]=p1[1];p2[2]=p1[2];
+}
+
 void copymat(double a[3][3], double b[3][3]){
     copypt(a[0],b[0]);
     copypt(a[1],b[1]);
@@ -168,6 +173,12 @@ void matxpt(double m[][3], double p[3], double p2[3]){
 }
 
 void matxpt(double m[][3], float p[3], float p2[3]){
+    p2[0]=m[0][0]*p[0]+m[1][0]*p[1]+m[2][0]*p[2];
+    p2[1]=m[0][1]*p[0]+m[1][1]*p[1]+m[2][1]*p[2];
+    p2[2]=m[0][2]*p[0]+m[1][2]*p[1]+m[2][2]*p[2];
+}
+
+void matxpt(double m[][3], float p[3], double p2[3]){
     p2[0]=m[0][0]*p[0]+m[1][0]*p[1]+m[2][0]*p[2];
     p2[1]=m[0][1]*p[0]+m[1][1]*p[1]+m[2][1]*p[2];
     p2[2]=m[0][2]*p[0]+m[1][2]*p[1]+m[2][2]*p[2];
@@ -365,6 +376,10 @@ void backOnHyperboloid(float p[]){
     p[2] = sqrt(p[0]*p[0] + p[1]*p[1] + 1);
 }
 
+void backOnHyperboloid(double p[]){
+    p[2] = sqrt(p[0]*p[0] + p[1]*p[1] + 1);
+}
+
 double h2side(double p1[3], double p2[3], double p3[3]){
     double icross[3] = {p1[1]*p2[2] - p1[2]*p2[1], p1[2]*p2[0] - p1[0]*p2[2], p1[1]*p2[0] - p1[0]*p2[1]};
     if(lidot(icross,p3) < 0) return -1;
@@ -551,13 +566,14 @@ void addExtraToPOW2(std::vector<float>& G, float iaunit){
     }
 }*/
 
-void updateDuplicateRot(float pos[], float pos2[], float dpos[], float dpos2[], int w, int i){
+void updateDuplicateRot(double pos[], double pos2[], double dpos[], double dpos2[], int w, int i){
     double p1[] = {paw[i],paw[i + 1],paw[i + 2]};
     int dat = (int)paw[i + 7];
     int type = dat&3;
     char mirror = (dat>>23)&1, side = (dat>>22)&1;
     double iaunit = worldCurvatures[w];
     double pos2r[3];
+    double k;
     copypt(pos2,pos2r);
     if(iaunit == 0 && type == 1){//lines in E2 are special needs
         double p0[] = {pos[0],pos[1]}, p2[] = {paw[i + 3],paw[i + 4]};
@@ -595,6 +611,14 @@ void updateDuplicateRot(float pos[], float pos2[], float dpos[], float dpos2[], 
         pos2r[0] /= prs; pos2r[1] /= prs;
     } else if(iaunit < 0){
         pos2r[0] /= prsh; pos2r[1] /= prsh;
+        if(type > 0){
+            double p1t[3] = {paw[i],paw[i + 1],paw[i + 2]};
+            double p2t[3] = {paw[i + 3],paw[i + 4],paw[i + 5]};
+            if(lidot(pos,p1t) < lidot(p1t,p2t)){
+                pos2r[1] = -pos2r[1];
+                pos2r[0] = -pos2r[0];
+            }
+        }
     }
     w = (dat>>3)&511;
     i = int(paw[w]) + sizeOfPow*(dat>>12)&1023;
@@ -627,6 +651,14 @@ void updateDuplicateRot(float pos[], float pos2[], float dpos[], float dpos2[], 
         transpose(rot,roti);
         matxpt(roti,dpos2);
     } else if(iaunit < 0){
+        if(type > 0){
+            double p1t[3] = {paw[i],paw[i + 1],paw[i + 2]};
+            double p2t[3] = {paw[i + 3],paw[i + 4],paw[i + 5]};
+            if(lidot(dpos,p1t) < lidot(p1t,p2t)){
+                pos2r[1] = -pos2r[1];
+                pos2r[0] = -pos2r[0];
+            }
+        }
         double rot[3][3], roti[3][3];
         h2matto(dpos,rot);
         matxpt(rot,p1);
@@ -758,7 +790,7 @@ void createDuplicate(double RL[], double RD, double p[], int ipi, int* w, double
     }
 }
 
-void moveEntity(double dx, double dy, float pos[], float pos2[], float ref[], int* cw, float props[]){
+void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[], int* cw, float props[]){
     int maxits = 19;
     bool bounce = 0;//temp name, disables wall colliders and portal dupe creation because they use the same code. Makes you bounce off walls because that is what they do as a failsafe for if you go too fast to get past their colliders.
     //printf("dx:%.19lf \t dy:%.19lf \t pos:%.19f, %.19f, %.19f \t cam:%.19f, %.19f, %.19f \t cw:%i\n", dx, dy, pos[0], pos[1], pos[2], ref[0], ref[1], ref[2], *cw);
@@ -1005,10 +1037,7 @@ void moveEntity(double dx, double dy, float pos[], float pos2[], float ref[], in
                                     cp[0] -= posc[0];cp[1] -= posc[1];
                                     double pos2c[2] = {pos2[0] - pos[0], pos2[1] - pos[1]};
                                     double pos2r[3] = {-(pos2c[0]*cp[0] + pos2c[1]*cp[1])/pr/RL[2], (pos2c[0]*cp[1] - pos2c[1]*cp[0])/pr/RL[2], pr};
-                                    double pos1[3], pos3[3];//this is jank
-                                    createDuplicate(RL,RL[2],pos2r,i,&duppw,pos1,pos3);
-                                    copypt(pos1,duppl);
-                                    copypt(pos3,duppl2);
+                                    createDuplicate(RL,RL[2],pos2r,i,&duppw,duppl,duppl2);
                                     iopip=i;//make this entity specific later
                                 }
                             } else inportal = 0;
@@ -1248,10 +1277,7 @@ void moveEntity(double dx, double dy, float pos[], float pos2[], float ref[], in
                             relLoc[0] = (dot(closestpt,ip2) - cr2)/(1 - cr2);
                             relLoc[1] = safe_sqrt(1 - relLoc[0]*relLoc[0])*s2side(ip1,ip2,closestpt);
                             relLoc[2] *= acos(cosODis);
-                            double pos1[3], pos3[3];//temp sotrage due to type conversion issues
-                            createDuplicate(relLoc,relLoc[2],temppos2r,indexOfIntersection,&duppw,pos1,pos3);
-                            copypt(pos1,duppl);
-                            copypt(pos3,duppl2);
+                            createDuplicate(relLoc,relLoc[2],temppos2r,indexOfIntersection,&duppw,duppl,duppl2);
                             iopip = indexOfIntersection;//make this entity specific later
                         }
                         if(inwall > 0){
@@ -1279,6 +1305,823 @@ void moveEntity(double dx, double dy, float pos[], float pos2[], float ref[], in
             }
         }//end of s2
         else if(iaunit < 0){//h2
+            double dc = exp(d), ds = 1/dc;
+            dc = (dc + ds)/2; ds = dc - ds;
+            //^cosh and sinh of d, done weird to remove redundant calculations
+            double k;
+            double rot[3][3];
+            if(type < 4){
+                k = lidot(sp1,sp2);
+                if(type > 0){
+                    double tv[3];
+                    copypt(sp1,tv);
+                    copypt(sp2,sp1);
+                    copypt(tv,sp2);
+                }
+                h2matto(sp1,rot);
+                matxpt(rot,sp2);
+                double r = sqrt(sp2[0]*sp2[0] + sp2[1]*sp2[1]);
+                sp2[0] /= r; sp2[1] /= r;
+                rotXY(rot, sp2[0],-sp2[1]);
+                switch(type){
+                    case 0:
+                        rotXY(rot, EL[0],EL[1]);
+                        if(si < 0){
+                            copypt(pos2,pos2r);
+                            matxpt(rot,pos2r);
+                            r = sqrt(pos2r[0]*pos2r[0] + pos2r[1]*pos2r[1]);
+                            pos2r[0] /= r;pos2r[1] /= r;
+                            pos2r[2] = pr;
+                        } else lorentzXZ(rot,k,-r);
+                        break;
+                    case 1:
+                        idealrot(rot,EL[1]);
+                        break;
+                    case 2:
+                        lorentzXZ(rot,r,-k);
+                        lorentzYZ(rot,EL[0],-EL[1]);
+                        lorentzXZ(rot,r,k);
+                        break;
+                    default:
+                        printf("invalid type\n");
+                }
+                if(si > 0) rotXY(rot,EA[0],EA[1]);
+            } else {
+                copymat(rotmstart,rot);
+            }
+            double cip1[3], cip2[3], cip[3];
+            cip[0] = ds;
+            int cii = -1;
+            int i = int(paw[*cw]);
+            while(i < (int)paw[*cw + 1]){
+                double p1[3] = {paw[i],paw[i + 1],paw[i + 2]},
+                p2[3] = {paw[i + 3],paw[i + 4],paw[i + 5]};
+                double limit = paw[i + 6];
+                type = int(paw[i + 7])&3;
+                k = lidot(p1,p2);
+                matxpt(rot,p1);
+                matxpt(rot,p2);
+                double o = sqrt(k*k - p1[2]*p1[2] + p1[0]*p1[0]);
+                double tR = (k + o)/(p1[2] - p1[0]), itR = 1/tR;
+                double tL = (k + o)/(p1[2] + p1[0]), itL = 1/tL;
+                double cipR[3], cipL[3];
+                cipR[1] = cipL[1] = 0;
+                cipR[0] = (tR - itR)/2; cipR[2] = cipR[0] + itR;
+                cipL[0] = (itL - tL)/2; cipL[2] = cipL[0] + tL;
+                bool risvalid = tR > 0 && limit > lidot(p2,cipR);
+                bool lisvalid = tL > 0 && limit > lidot(p2,cipL);
+                if(risvalid && 0 < cipR[0] && cipR[0] < cip[0] && (i != si || (lisvalid && cipL[2] < cipR[2]))){
+                    copypt(cipR,cip);
+                    cii = i;
+                }
+                if(lisvalid && 0 < cipL[0] && cipL[0] < cip[0] && (i != si || (risvalid && cipR[2] < cipL[2]))){
+                    copypt(cipL,cip);
+                    cii = i;
+                }
+                if(i == cii){
+                    copypt(p1,cip1);
+                    copypt(p2,cip2);
+                }
+                i += sizeOfPow;
+            }
+            if(cii > 0){
+                int dat = (int)paw[cii + 7];
+                type = dat&7;
+                if(type > 3){
+                    si = cii;
+                    d -= acosh(cip[2]);
+                    lorentz(cip1[0],cip1[2],cip[2],-cip[0]);
+                    lorentzXZ(rot,cip[2],-cip[0]);
+                    double r2 = cip1[0]*cip1[0] + cip1[1]*cip1[1];
+                    double c = 2*cip1[1]*cip1[1]/r2 - 1, s = -2*cip1[0]*cip1[1]/r2;
+                    rotXY(rot,c,-s);
+                    rotate(pos2r[0],pos2r[1],c,-s);
+                    copymat(rot,rotmstart);
+                } else {
+                    d -= acosh(cip[2]);
+                    double side = 1;
+                    if(((dat>>22)&1)==1) side = -1;
+                    mirror = 1;
+                    if(((dat>>23)&1)==1) {mirror=-1;props[0]=-props[0];}//
+                    *cw = (dat>>3)&511;
+                    int di=(int)(paw[*cw])+sizeOfPow*(dat>>12)&1023;
+                    vec3(sp1, paw[di],paw[di+1],paw[di+2]);
+                    vec3(sp2, paw[di+3],paw[di+4],paw[di+5]);
+                    si = di;
+                    k = lidot(cip1,cip2);
+                    double k2 = k*k;
+                    double cL = lidot(cip,cip2), sL = 1;
+                    switch(type){
+                        case 0:
+                            cL = (cL - k2)/(1 - k2);
+                            sL = 1 - cL*cL;
+                            break;
+                        case 1:
+                            sL = 2*cL - 2;
+                            break;
+                        case 2:
+                            cL = (cL + k2)/(k2 + 1);
+                            sL = cL*cL - 1;
+                            break;
+                        default:
+                            printf("invalid type\n");
+                    }
+                    sL = safe_sqrt(sL)*h2side(cip1,cip2,cip);
+                    EL[0] = cL;
+                    EL[1] = sL*side*mirror;
+                    lorentz(cip1[0],cip1[2],cip[2],-cip[0]);
+                    if(type > 0){
+                        cip1[0] = -cip1[0];
+                        cip1[1] = -cip1[1];
+                    }
+                    double r = sqrt(cip1[0]*cip1[0] + cip1[1]*cip1[1]);
+                    EA[0] = -cip1[0]/r*side;
+                    EA[1] = -cip1[1]/r*side*mirror;
+                }
+            } else {
+                //...
+                //bug: camera not placed right when coming in from portal
+                double roti[3][3];
+                h2invert(rot,roti);
+                vec3(pos, ds,0,dc);
+                h2dadtopt(pos2r[2],pos2r[0],pos2r[1]*mirror,pos2);
+                vec3(ref, dx,-dy*mirror,sqrt(2));
+                lorentz(ref[0],ref[2],dc,ds);
+                lorentz(pos2[0],pos2[2],dc,ds);
+                matxpt(roti,pos);
+                matxpt(roti,pos2);
+                matxpt(roti,ref);
+                backOnHyperboloid(pos);
+                backOnHyperboloid(pos2);
+                backOnHyperboloid(ref);
+                d = 0;
+                if(!bounce){
+                    int i = paw[*cw];
+                    double posc[3];
+                    copypt(pos,posc);
+                    bool inwall = false;
+                    bool inportal = false;
+                    double coshdis;
+                    double closestpoint[3];
+                    while(i < paw[*cw + 1] && !inwall){
+                        bool valid = 0;
+                        double p1[3] = {paw[i],paw[i + 1],paw[i + 2]},
+                        p2[3] = {paw[i + 3],paw[i + 4],paw[i + 5]};
+                        double limit = paw[i + 6];
+                        type = int(paw[i + 7])&3;
+                        bool iswall = (int(paw[i + 7])&4) > 0;
+                        k = lidot(p1,p2);
+                        double id1 = lidot(posc,p1);
+                        double id2 = lidot(p1,p1);
+                        double A = id1*id1 - id2;
+                        double B = sqrt( (k*k - id2)/A );
+                        double C;
+                        if(type == 1) C = (id1*id1 - k*k)/(2*A*k);
+                        else C = (k - B*id1)/id2;
+                        double cp[3] = {B*posc[0] + C*p1[0],B*posc[1] + C*p1[1],B*posc[2] + C*p1[2]};
+                        if(lidot(cp,p2) < limit){
+                            valid = 1;
+                            //...
+                        } else {
+                            int off;
+                            if(h2side(p1,p2,cp) > 0) off = 8;
+                            else off = 11;
+                            vec3(cp, paw[i + off],paw[i + off + 1],paw[i + off + 2]);
+                        }
+                        double c = lidot(cp,posc);
+                        if((c < prch && !inportal && valid) || (iswall && c < coshplayerWallCollisionr)){
+                            copypt(cp, closestpoint);
+                            coshdis = c;
+                            if(coshdis < 1) coshdis = 1;
+                            if(iswall){
+                                inwall = true;
+                                inportal = false;
+                            } else {
+                                inportal = true;
+                                if(coshdis > cosh(ped)){
+                                        double relLoc[3];
+                                        double k2 = k*k;
+                                        double cL = lidot(cp,p2), sL = 1;
+                                        switch(type){
+                                            case 0:
+                                                cL = (cL - k2)/(1 - k2);
+                                                sL = 1 - cL*cL;
+                                                break;
+                                            case 1:
+                                                sL = 2*cL - 2;
+                                                break;
+                                            case 2:
+                                                cL = (cL + k2)/(k2 + 1);
+                                                sL = cL*cL - 1;
+                                                break;
+                                            default:
+                                                printf("invalid type\n");
+                                        }
+                                        sL = -safe_sqrt(sL)*h2side(p1,p2,posc);
+                                        double pos2c[3], AB[3], BC[3];
+                                        copypt(pos2,pos2c);
+                                        licross(pos2c,posc,AB);
+                                        AB[0] /= prsh; AB[1] /= prsh; AB[2] /= prsh;
+                                        licross(posc,cp,BC);
+                                        double t = sqrt(-lidot(BC,BC));
+                                        BC[0] /= t; BC[1] /= t; BC[2] /= t;
+                                        if(lidot(posc,p1) > k) relLoc[2] = 1;//checking which side of the object I am on for format reasons
+                                        else relLoc[2] = -1;
+                                        double facingCos = -lidot(AB,BC)*relLoc[2];
+                                        double facingSin = safe_sqrt(1 - facingCos*facingCos)*sign(lidot(BC,pos2c))*relLoc[2];
+                                        double temppos2r[] = {facingCos,facingSin,pr};
+                                        double cr2 = coshdis*coshdis;
+                                        relLoc[0] = cL;
+                                        relLoc[1] = sL;
+                                        relLoc[2] *= acosh(coshdis);
+                                        createDuplicate(relLoc,relLoc[2],temppos2r,i,&duppw,duppl,duppl2);
+                                        iopip = i;//TODO make this entity specific later
+                                } else {
+                                    inwall = true;
+                                }
+                            }
+                        }
+                        i += sizeOfPow;
+                    }
+                    if(inwall){
+                        double rot[3][3];
+                        h2matto(posc,rot);
+                        double refc[3];
+                        copypt(ref,refc);
+                        matxpt(rot,refc);
+                        matxpt(rot,closestpoint);
+                        double r = sqrt(refc[0]*refc[0] + refc[1]*refc[1]);
+                        rotate(closestpoint[0],closestpoint[1],refc[0]/r,-refc[1]/r);
+                        //printf("%.99lf\n",coshdis);
+                        if(coshdis < 1) coshdis = 1;
+                        r = sqrt(closestpoint[0]*closestpoint[0] + closestpoint[1]*closestpoint[1]);
+                        if(inportal) d = 1.01*ped - acosh(coshdis);
+                        else d = 1.01*playerWallCollisionr - acosh(coshdis);
+                        //printf("%.99lf\n",d);
+                        //printf("%.99lf\n",r);
+                        dx = -closestpoint[0]/r;
+                        dy = -closestpoint[1]/r;
+                        //printf("%lf\t%lf\t%lf\n",dx,dy,d);
+                        EL[0] = dx;
+                        EL[1] = -dy;
+                        si = -1;
+                        type = 0;
+                        mirror = 1;
+                        copypt(pos,sp1);
+                        copypt(ref,sp2);
+                        //d = 0;
+                    }
+                }//end wall and dup stuff
+            }
+        }//end of h2*/
+    }
+    if(ogcw == *cw){
+        double posc[3];
+        copypt(pos,posc);
+        posc[0] -= ogpos[0];posc[1] -= ogpos[1];posc[2] -= ogpos[2];
+        if(posc[0]*posc[0] + posc[1]*posc[1] + posc[2]*posc[2] < ped*ped){//reverting if the move was less than a rounding error. This is to fix a bug with wall corners in S2
+            copypt(ogpos,pos);
+            copypt(ogpos2,pos2);
+            copypt(ogref,ref);
+        }
+    }
+    //std::cout<<iterations<<"\n";
+    if(iterations >= maxits) std::cout<<"failsafe trigger\n";
+    //if(*cw==0 &&  pos[0]*pos[0] + (pos[1]-2)*(pos[1]-2) > 1.25*1.25 ) printf("error?\n");
+}
+
+void moveEntity2(double dx, double dy, float pos[], float pos2[], float ref[], int* cw, float props[]){
+    int maxits = 19;
+    bool bounce = 0;//temp name, disables wall colliders and portal dupe creation because they use the same code. Makes you bounce off walls because that is what they do as a failsafe for if you go too fast to get past their colliders.
+    //printf("dx:%.19lf \t dy:%.19lf \t pos:%.19f, %.19f, %.19f \t cam:%.19f, %.19f, %.19f \t cw:%i\n", dx, dy, pos[0], pos[1], pos[2], ref[0], ref[1], ref[2], *cw);
+    //WIP
+    double posnext[3], pos2next[3], refnext[3], propsnext[sizeof(props)];
+    int nextworld = *cw;
+    //TO DO: Make it so all internal calculations are doubles
+    double ogpos[3], ogpos2[3], ogref[3];
+    int ogcw = *cw;
+    copypt(pos,ogpos);
+    copypt(pos2,ogpos2);
+    copypt(ref,ogref);
+    duppw = -1;//temporary hard coding, make it only do this for the entity specific duplicat later
+    iopip = -1;
+    diopip = -1;
+    char reflect=0;//temporary
+    char type = 0,mirror=1,side=0;
+    int si=-1;
+    if(props[0]==-1) {dy=-dy;}//correct the confusion of the player
+    double d = sqrt(dx*dx + dy*dy);
+    dx /= d;dy /= d;
+    double ogd = d;
+    double sp1[]={pos[0],pos[1],pos[2]}, sp2[]={ref[0],ref[1],ref[2]};
+    double EL[2]={dx,-dy}, EA[2];//Entrance/exit location and angle
+    double pos2r[3];
+    int iterations=0;
+    double rotmstart[3][3];
+    bool debug = false;
+    while(d>0 && iterations < maxits){
+        float iaunit = worldCurvatures[*cw];
+        d+=ped;
+        iterations++;
+        //if(iterations>5) abort();
+        if(iaunit==0){//e2
+            double off[2], rot[2];
+            double r,t;
+            if(type < 4){
+                off[0] = -sp1[0];off[1] = -sp1[1];
+                sp2[0]-=sp1[0];sp2[1]-=sp1[1];
+                r=sqrt(sp2[0]*sp2[0]+sp2[1]*sp2[1]);
+                rot[0] = sp2[0]/r; rot[1] = -sp2[1]/r;//rotation vector to bring sp2 to (1,0)
+                if(type==0) rotate(rot[0],rot[1],EL[0],EL[1]);
+                rotate(off[0],off[1],rot[0],rot[1]);//apply rotations to what will be the offset
+                if(si > 0){
+                    if(type==0) off[0]-=r;
+                    if(type==1) {//E2 lines are special needs
+                        off[0]-=EL[1]+r/2;
+                        t=EA[0];
+                        EA[0]=-EA[1];
+                        EA[1]=t;
+                    }
+                    rotate(off[0],off[1],EA[0],EA[1]);
+                    rotate(rot[0],rot[1],EA[0],EA[1]);
+                } else {
+                    pos2r[0]=pos2[0];pos2r[1]=pos2[1];
+                    rotate(pos2r[0],pos2r[1],rot[0],rot[1]);
+                    pos2r[0]+=off[0];pos2r[1]+=off[1];
+                    pos2r[2]=sqrt(pos2r[0]*pos2r[0]+pos2r[1]*pos2r[1]);
+                    pos2r[0]=pos2r[0]/pos2r[2];pos2r[1]=pos2r[1]/pos2r[2];
+                    pos2r[2]=pr;
+                }
+            } else {
+                rot[0] = rotmstart[0][0]; rot[1] = rotmstart[0][1];
+                off[0] = rotmstart[1][0]; off[1] = rotmstart[1][1];
+            }
+            int i=(int)paw[*cw],cii=-1;
+            double cip1[]={0,0},cip2[]={0,0};
+            double cid=d;
+            //portal collision code below to do: add walls to this
+            while(i<paw[*cw+1]){
+                double p1[]={paw[i],paw[i+1]},p2[]={paw[i+3],paw[i+4]};
+                r=(p1[0]-p2[0])*(p1[0]-p2[0])+(p1[1]-p2[1])*(p1[1]-p2[1]);//actually r^2
+                double al=paw[i+6];
+                rotate(p1[0],p1[1],rot[0],rot[1]);
+                p1[0]+=off[0];p1[1]+=off[1];
+                rotate(p2[0],p2[1],rot[0],rot[1]);
+                p2[0]+=off[0];p2[1]+=off[1];
+                //if(i==10) printf("%lf, %lf, %lf, %lf\n", p1[0], p1[1], p2[0], p2[1]);
+                type = ((char)paw[i+7])&3;
+                if(type == 0){
+                    if(p1[1]*p1[1]<=r&&(al==4*r||p2[1]*p2[1]<=al*r)){
+                        double o=sqrt(r-p1[1]*p1[1]), xt=p1[0]-o, xt1=abs(xt);
+                        if(((al==4) || ((xt-p2[0])*(xt-p2[0])+p2[1]*p2[1]<=al*r)) && xt>0 && xt<cid && i!=si ){
+                            cip1[0]=p1[0];cip1[1]=p1[1];
+                            cip2[0]=p2[0];cip2[1]=p2[1];
+                            cii=i;cid=xt;
+                        }
+                        xt=p1[0]+o;
+                        //printf("%.99lf\t%lf\n",xt,xt1);
+                        if(xt>0){
+                            if(((al==4) || ((xt-p2[0])*(xt-p2[0])+p2[1]*p2[1]<=al*r)) && xt<cid && (i!=si || xt>xt1) ){//problem place, think it is fixed now.
+                                //std::cout<<"\t"<<((xt-p1[0])*(xt-p1[0])+p1[1]*p1[1]+ped-r)<<"\n";
+                                cip1[0]=p1[0];cip1[1]=p1[1];
+                                cip2[0]=p2[0];cip2[1]=p2[1];
+                                cii=i;cid=xt;
+                            }
+                        }
+                    }
+                } else {
+                    if((p1[1]*p2[1]<0)&&((p1[0]>=0)||(p2[0]>=0))&&(i!=si)){//crosses x axis and one of the 2 points is in front and not the source portal
+                        double xt=(p1[0]-p2[0])*p2[1]/(p2[1]-p1[1])+p2[0];
+                        if(xt>0 && xt<cid){
+                            cip1[0]=p1[0];cip1[1]=p1[1];
+                            cip2[0]=p2[0];cip2[1]=p2[1];
+                            cii=i;cid=xt;
+                        }
+                    }
+                }
+                i+=sizeOfPow;
+            }
+            //if(cii==si) std::cout<<cid<<"\n";
+            if(cii>-1){
+                int dat = (int)paw[cii + 7];
+                type = dat&7;
+                if(type > 3){
+                    si = cii;
+                    d -= cid;
+                    off[0] -= cid;
+                    cip1[0] -= cid;
+                    if(type == 5){
+                        t = cip1[0];
+                        cip1[0] = -cip1[1];
+                        cip1[1] = t;
+                    }
+                    double r2 = cip1[0]*cip1[0] + cip1[1]*cip1[1];
+                    double c = 2*cip1[1]*cip1[1]/r2 - 1, s = -2*cip1[0]*cip1[1]/r2;
+                    rotate(rot[0],rot[1],c,-s);
+                    rotate(off[0],off[1],c,-s);
+                    rotate(pos2r[0],pos2r[1],c,-s);
+                    rotmstart[0][0] = rot[0]; rotmstart[0][1] = rot[1];
+                    rotmstart[1][0] = off[0]; rotmstart[1][1] = off[1];
+                } else {
+                    //handle portal collisions
+                    if(((dat>>22)&1)==1) side=-1;
+                    else side=1;
+                    if(((dat>>23)&1)==1) {mirror=-1;props[0]=-props[0];}//might have issues
+                    else mirror=1;
+                    cip1[0]-=cid;
+                    r=sqrt(cip1[0]*cip1[0]+cip1[1]*cip1[1]);
+                    t=cip1[0]/r*side;
+                    if(type==1) t*=mirror;
+                    EA[0]=-t;
+                    t=cip1[1]/r*side;
+                    if(type==0) t*=mirror;
+                    EA[1]=-t;
+                    if(reflect){
+                        EA[0]=-EA[0];
+                        EA[1]=-EA[1];
+                    }
+                    if(type==0){
+                        cip2[0]-=cid;
+                        cip2[0]=(cip2[0]-cip1[0]);
+                        cip2[1]=-(cip2[1]-cip1[1]);
+                        cip1[0]*=-1;cip1[1]*=-1;
+                        rotate(cip1[0],cip1[1],cip2[0],cip2[1]);
+                        r=sqrt(cip1[0]*cip1[0]+cip1[1]*cip1[1]);
+                        cip1[0]/=r;
+                        cip1[1]/=r*mirror*side;
+                        EL[0]=cip1[0];EL[1]=-cip1[1];
+                    }
+                    if(type==1){
+                        cip1[0]-=cip2[0];cip1[1]-=cip2[1];
+                        EL[1]=(r-sqrt(cip1[0]*cip1[0]+cip1[1]*cip1[1])/2)*mirror*side;
+                        t=-EA[0];//this is for when it will need to link to a horocycle
+                        EA[0]=EA[1];
+                        EA[1]=t;
+                    }
+                    *cw=((dat)>>3)&511;
+                    int di=int(paw[*cw])+sizeOfPow*(dat>>12)&1023;
+                    si = di;
+                    sp1[0]=paw[di];sp1[1]=paw[di+1];sp1[2]=paw[di+2];
+                    sp2[0]=paw[di+3];sp2[1]=paw[di+4];sp2[2]=paw[di+5];
+                    d+=ped-cid;
+                }
+            } else {//to do: remove mirror from here
+                posnext[0] = d;posnext[1] = 0;posnext[2] = 0;
+                posnext[0] -= off[0];posnext[1] -= off[1];
+                rotate(posnext[0],posnext[1],rot[0],-rot[1]);//reversing rotations, which is easy in E2
+                pos2r[1] *= mirror;
+                pos2next[0] = pos2r[0]*pos2r[2]+d;pos2next[1] = pos2r[1]*pos2r[2];
+                pos2next[0] -= off[0];pos2next[1] -= off[1];pos2next[2] = 0;
+                rotate(pos2next[0],pos2next[1],rot[0],-rot[1]);
+                //printf("%f %f\n",pos2[0],pos2[1]);
+                refnext[0] = dx+d;refnext[1] = -dy*mirror;refnext[2] = 0;
+                refnext[0] -= off[0];refnext[1] -= off[1];
+                rotate(refnext[0],refnext[1],rot[0],-rot[1]);
+                d = 0;
+                //if(iterations>9) bounce=1;
+
+                //TO DO: Make wall checks its own function?
+                if(!bounce) {
+                    //*
+                    //
+                    double RL[3], pos2r[3], posc[2];
+                    double closestpt[2];
+                    int i = (int)paw[*cw];
+                    bool inwall = 0, inportal = 0;
+                    while(i < paw[*cw + 1] && !inwall){
+                        bool valid = 0;
+                        double cp[2];
+                        double p1[] = {paw[i], paw[i + 1]}, p2[] = {paw[i + 3],paw[i + 4]};
+                        p2[0] -= p1[0]; p2[1] -= p1[1];
+                        posc[0] = posnext[0] - p1[0]; posc[1] = posnext[1] - p1[1];
+                        cp[0] = posc[0]; cp[1] = posc[1];
+                        double rl2 = p2[0]*p2[0] + p2[1]*p2[1];//radius/length^2
+                        double rc;
+                        type = ((int)paw[i + 7])&7;
+                        if( (type&1) == 0){
+                            rc = sqrt(rl2/(posc[0]*posc[0] + posc[1]*posc[1]) );//r conversion factor
+                            cp[0]*=rc;cp[1]*=rc;
+                            double al = paw[i + 6], ala = rl2*al;//angle limit (2-2cos(a)) and adjusted angle limit
+                            if(al==4 || ( (cp[0] - p2[0])*(cp[0] - p2[0]) + (cp[1] - p2[1])*(cp[1] - p2[1]) < ala) ){
+                                valid = 1;
+                                //...
+                            } else if(type > 3){
+                                double c = 1 - al*0.5, s = sqrt(1 - c*c);
+                                if(posc[1]*p2[0] - posc[0]*p2[1] < 0) s = -s;
+                                cp[0] = p2[0]; cp[1] = p2[1];
+                                rotate(cp[0],cp[1],c,s);
+                            }
+                        } else {
+                            t=posc[0]*p2[0] + posc[1]*p2[1];
+                            valid = 1;
+                            if(t < 0) t = 0;
+                            if(t > rl2) t = rl2;
+                            cp[0] = p2[0]*t/rl2;
+                            cp[1] = p2[1]*t/rl2;
+                        }
+                        t = (posc[0] - cp[0])*(posc[0] - cp[0]) + (posc[1] - cp[1])*(posc[1] - cp[1]);
+                        inwall = t < playerWallCollisionr*playerWallCollisionr && type > 3;
+                        if( inwall || (t < pr*pr && !inportal && valid) ){
+                            RL[2] = sqrt(t);
+                            if(!inwall){
+                                inportal = 1;
+                                if(t < ped*ped) inwall = 1;
+                                else {
+                                    if(type == 0){
+                                        RL[0] = cp[0]; RL[1] = cp[1];
+                                        rotate(RL[0],RL[1],p2[0],-p2[1]);
+                                        RL[0] /= rl2; RL[1] /=rl2;
+                                        if(rc > 1) RL[2] = -RL[2];
+                                    } else {
+                                        rl2 = sqrt(rl2);
+                                        RL[1] = rl2/2 - (cp[0]*p2[0] + cp[1]*p2[1])/rl2;
+                                        if(posc[1]*p2[0] - posc[0]*p2[1] < 0) RL[2] = -RL[2];
+                                    }
+                                    cp[0] -= posc[0];cp[1] -= posc[1];
+                                    double pos2c[2] = {pos2next[0] - posnext[0], pos2next[1] - posnext[1]};
+                                    double pos2r[3] = {-(pos2c[0]*cp[0] + pos2c[1]*cp[1])/pr/RL[2], (pos2c[0]*cp[1] - pos2c[1]*cp[0])/pr/RL[2], pr};
+                                    double pos1[3], pos3[3];//this is jank
+                                    createDuplicate(RL,RL[2],pos2r,i,&duppw,pos1,pos3);
+                                    copypt(pos1,duppl);
+                                    copypt(pos3,duppl2);
+                                    iopip=i;//make this entity specific later
+                                }
+                            } else inportal = 0;
+                            if(inwall){
+                                printf("%lf\t%lf\n",dx,dy);
+                                t = sqrt(t);
+                                if(inportal) d = 1.01*ped - t;
+                                else d = 1.01*playerWallCollisionr - t;
+                                cp[0] -= posc[0];cp[1] -= posc[1];
+                                cp[0] *= -d/t; cp[1] *= -d/t;
+                                double refc[2] = {refnext[0] - posnext[0], refnext[1] - posnext[1]};
+                                rotate(cp[0],cp[1],refc[0],-refc[1]);
+                                cp[0] += ogd*dx; cp[1] += ogd*dy;
+                                d = sqrt(cp[0]*cp[0] + cp[1]*cp[1]);
+                                ogd = d;
+                                dx = cp[0]/d; dy = cp[1]/d;
+                                mirror=1;
+                                type=0;si=-1;
+                                sp1[0]=pos[0];
+                                sp1[1]=pos[1];
+                                sp2[0]=ref[0];
+                                sp2[1]=ref[1];
+                                EL[0]=dx;EL[1]=-dy;
+                                printf("%i\n",iterations);
+                                printf("%lf\n",d);
+                                printf("%lf\t%lf\n",dx,dy);
+                            }
+                            //...
+                        }
+                        //
+                        i+=sizeOfPow;
+                    }
+                }//end of collision checks
+                //else d=0;
+;
+                //if(i==paw[*cw+1]) d=0;
+            }//end of if there are no portals
+
+
+
+
+            //[-x  y][-1]   [x]
+            //[-y -x][ 0] = [y]
+
+        } /*else if(iaunit > 0){//s2
+            double dc=cos(d),ds=sin(d);
+            double rot[3][3];
+            double rc,rs,r;
+            if(type < 4){
+                if(si > 0){
+                    rc = dot(sp1,sp2);
+                    rs = sqrt(1 - rc*rc);
+                    s2matto(si,rot);
+                } else {
+                    s2matto(sp1,rot);
+                    matxpt(rot,sp2);
+                    r=sqrt(sp2[0]*sp2[0]+sp2[1]*sp2[1]);
+                    sp2[0]/=r;sp2[1]/=-r;
+                    //way more effecient than matrix x matrix multiplication, which will be avoided at all costs on the CPU side.
+                    rotXY(rot,sp2[0],sp2[1]);
+                    //end of axis aligning sp2, well making the transformation that would.
+                }
+                rotXY(rot,EL[0],EL[1]);
+                if(si > 0){
+                    rotXZ(rot,rc,rs);
+                    rotXY(rot,EA[0],EA[1]);
+                } else {
+                    copypt(pos2,pos2r);
+                    matxpt(rot,pos2r);
+                    r=sqrt(pos2r[0]*pos2r[0]+pos2r[1]*pos2r[1]);
+                    pos2r[0]/=r;pos2r[1]/=r;
+                    pos2r[2]=pr;
+                }
+            } else {
+                copymat(rotmstart,rot);
+            }
+            //checks for portals
+            int i=(int)paw[*cw],cii=-1;
+            double cip1[3],cip2[3],cip[3];
+            double cidr=s2disrank(dc,ds);
+            while(i<(int)paw[*cw+1]){
+                double p1[3]={paw[i],paw[i+1],paw[i+2]}, p2[3]={paw[i+3],paw[i+4],paw[i+5]};
+                rc=dot(p1,p2);
+                rs=1-rc*rc;//actually rs^2, just reusing space
+                matxpt(rot,p1);
+                matxpt(rot,p2);
+                double y1y1=p1[1]*p1[1];
+                if(y1y1 < rs){
+                    double cipp[3], cipm[3];//closest intersection point plus and minus
+                    double s=sqrt(rs-y1y1), D=1-y1y1;//angle limit, (cos(a)-1), decreases with angle
+                    double al=paw[i+6], ala=1+rs*al, disrank;
+                    cipp[0]=(p1[0]*rc+p1[2]*s)/D;
+                    cipm[0]=(p1[0]*rc-p1[2]*s)/D;
+                    cipp[2]=(p1[2]*rc-p1[0]*s)/D;
+                    cipm[2]=(p1[2]*rc+p1[0]*s)/D;
+                    cipp[1]=0;cipm[1]=0;
+
+                    disrank=s2disrank(cipp[2],cipp[0]);
+                    if( ( al==-2 || dot(cipp,p2)>ala ) && disrank<cidr && (si!=i || cipp[2] < cipm[2]) ){
+                        cii=i;
+                        copypt(p1,cip1);
+                        copypt(p2,cip2);
+                        copypt(cipp,cip);
+                        cidr=disrank;
+                    }
+                    disrank=s2disrank(cipm[2],cipm[0]);
+                    if( ( al==-2 || dot(cipm,p2)>ala ) && disrank<cidr && (si!=i || cipm[2] < cipp[2]) ){
+                        cii=i;
+                        copypt(p1,cip1);
+                        copypt(p2,cip2);
+                        copypt(cipm,cip);
+                        cidr=disrank;
+                    }
+
+                }
+                i+=sizeOfPow;
+            }//end of portal checks
+            //
+            if(cii > -1){
+                int dat=(int)paw[cii+7];
+                type = dat&7;
+                if(type > 3){
+                    si = cii;
+                    d -= arctan(cip[0],cip[2]);
+                    rotate(cip1[0],cip1[2],cip[2],cip[0]);
+                    rotXZ(rot,cip[2],cip[0]);
+                    double r2 = cip1[0]*cip1[0] + cip1[1]*cip1[1];
+                    double c = 2*cip1[1]*cip1[1]/r2 - 1, s = -2*cip1[0]*cip1[1]/r2;
+                    rotXY(rot,c,-s);
+                    rotate(pos2r[0],pos2r[1],c,-s);
+                    copymat(rot,rotmstart);
+                    //...
+                } else {
+                    char side;
+                    if(((dat>>22)&1)==1) side=-1;
+                    else side=1;
+                    if(((dat>>23)&1)==1) {mirror=-1;props[0]=-props[0];}
+                    else mirror=1;
+                    *cw=(dat>>3)&511;
+                    int di=(int)(paw[*cw])+sizeOfPow*(dat>>12)&1023;
+                    vec3(sp1, paw[di],paw[di+1],paw[di+2]);
+                    vec3(sp2, paw[di+3],paw[di+4],paw[di+5]);
+                    si=di;
+                    d -= arctan(cip[0],cip[2]);
+                    {
+                    double cosr2 = dot(cip1,cip2); cosr2 *= cosr2;
+                    double cosE = (dot(cip2,cip) - cosr2)/(1 - cosr2);
+                    double sinE = -safe_sqrt(1 - cosE*cosE)*mirror*side;
+                    //getting the sign of sin, dot(cross(p2,p1),p)
+                    //to do: make this its own function later
+                    double cross[3];
+                    cross[0] = cip1[1]*cip2[2] - cip1[2]*cip2[1];
+                    cross[1] = -cip1[0]*cip2[2] + cip1[2]*cip2[0];
+                    cross[2] = cip1[0]*cip2[1] - cip1[1]*cip2[0];
+                    if(dot(cip,cross) < 0) sinE = -sinE;
+                    EL[0] = cosE;
+                    EL[1] = sinE;
+                    }
+                    double tm[3][3];//temporary matrix
+                    rotate(cip1[0],cip1[2],cip[2],cip[0]);
+                    r=sqrt(cip1[0]*cip1[0]+cip1[1]*cip1[1]);
+                    cip1[0]/=r;cip1[1]/=r;
+                    EA[0]=-cip1[0]*side;
+                    EA[1]=-cip1[1]*mirror*side;
+                }
+            } else {
+                double roti[3][3];
+                transpose(rot,roti);
+                vec3(pos, ds,0,dc);
+                s2dadtopt(pos2r[2],pos2r[0],pos2r[1]*mirror,pos2);
+                vec3(ref, dx,-dy*mirror,0);
+                rotate(pos2[2],pos2[0],dc,ds);
+                rotate(ref[2],ref[0],dc,ds);
+                matxpt(roti,pos);
+                matxpt(roti,pos2);
+                matxpt(roti,ref);
+                backOnSphere(pos);//stopping errors from accumilating beyond a point
+                d=0;
+                if(!bounce){
+                    double cp[3], closestpt[3], ip1[3], ip2[3];
+                    double cosODis;
+                    i = (int)paw[*cw];
+                    int indexOfIntersection = -1;
+                    char inwall = 0, inportal = 0;
+                    while(i<(int)paw[*cw+1] && inwall==0){
+                        bool valid = 1;
+                        char checkifinportal = 1;
+                        double p1[3]={paw[i],paw[i+1],paw[i+2]}, p2[3]={paw[i+3],paw[i+4],paw[i+5]};
+                        double rc = dot(p1,p2), //cos(r)
+                        rss = 1 - rc*rc,        //sin(r)^2
+                        r2c = dot(pos,p1),      //cos(r from entity to center of circle)
+                        A = safe_sqrt( rss/(1 - r2c*r2c)),
+                        B = rc - A * r2c;
+                        cp[0] = A*pos[0] + B*p1[0];
+                        cp[1] = A*pos[1] + B*p1[1];
+                        cp[2] = A*pos[2] + B*p1[2];
+                        char iswall = ( (int)paw[i + 7])&4;
+                        double al = paw[i + 6], ala = 1 + rss*al;
+                        if( (al > -2.0 && dot(cp,p2) < ala || r2c > cosplayerWallCollisionr)  ){
+                            if(iswall > 0){
+                                double endpt1[3] = {paw[i + 8],paw[i + 9],paw[i + 10]},
+                                endpt2[3] = {paw[i + 11],paw[i + 12],paw[i + 13]};
+                                double dot1 = dot(pos,endpt1), dot2 = dot(pos,endpt2);
+                                if(dot1>dot2) copypt(endpt1,cp);
+                                else copypt(endpt2,cp);
+                            } else valid = 0;
+                        }
+                        double cosDisToCP = dot(pos,cp);
+                        if( (iswall > 0 && cosDisToCP > cosplayerWallCollisionr) || (iswall == 0 && valid && cosDisToCP > prc && inportal == 0) ){
+                            cosODis = cosDisToCP;
+                            if(iswall > 0) {
+                                inwall = 1;
+                                inportal = 0;
+                            } else {
+                                inportal = 1;
+                                copypt(p1,ip1);
+                                copypt(p2,ip2);
+                            }
+                            copypt(cp,closestpt);
+                            indexOfIntersection = i;
+                        }
+                        //...
+                        i += sizeOfPow;
+                    }
+                    if(cosODis > 1) cosODis = 1;
+                    if(cosODis < -1) cosODis = -1;
+                    if(cosODis > cos(ped)) inwall = 1;
+                    if(indexOfIntersection > 0){
+                        if(inportal > 0 && !inwall){
+                            double posc[3], pos2c[3], relLoc[3];
+                            copypt(pos,posc);
+                            copypt(pos2,pos2c);
+                            double BC[3], AB[3];
+                            cross(pos2c,posc,AB);
+                            AB[0] /= prs; AB[1] /= prs; AB[2] /= prs;
+                            cross(posc,closestpt,BC);
+                            backOnSphere(BC);
+                            double cr2 = dot(ip1,ip2);
+                            if(dot(ip1,posc) > cr2) relLoc[2] = -1;
+                            else relLoc[2] = 1;
+                            double facingCos = dot(AB,BC)*relLoc[2];
+                            double facingSin = -safe_sqrt(1 - facingCos*facingCos)*sign(dot(BC,pos2c))*relLoc[2];
+                            double temppos2r[] = {facingCos,facingSin,pr};
+                            cr2 *= cr2;
+                            relLoc[0] = (dot(closestpt,ip2) - cr2)/(1 - cr2);
+                            relLoc[1] = safe_sqrt(1 - relLoc[0]*relLoc[0])*s2side(ip1,ip2,closestpt);
+                            relLoc[2] *= acos(cosODis);
+                            double pos1[3], pos3[3];//temp sotrage due to type conversion issues
+                            createDuplicate(relLoc,relLoc[2],temppos2r,indexOfIntersection,&duppw,pos1,pos3);
+                            copypt(pos1,duppl);
+                            copypt(pos3,duppl2);
+                            iopip = indexOfIntersection;//make this entity specific later
+                        }
+                        if(inwall > 0){
+                            if(inportal > 0) d = 1.01*ped - acos(cosODis);
+                            else d = 1.01*playerWallCollisionr - acos(cosODis);
+                            double refc[3];
+                            copypt(ref,refc);
+                            s2matto(pos,rot);
+                            matxpt(rot,refc);
+                            matxpt(rot,closestpt);
+                            rotate(closestpt[0],closestpt[1],refc[0],-refc[1]);
+                            double t = sqrt(closestpt[0]*closestpt[0] + closestpt[1]*closestpt[1]);
+                            dx = -closestpt[0]/t;
+                            dy = -closestpt[1]/t;
+                            EL[0] = dx;
+                            EL[1] = -dy;
+                            si = -1;
+                            type = 0;
+                            mirror = 1;
+                            copypt(pos,sp1);
+                            copypt(ref,sp2);
+                        }
+                    }
+                }//
+            }
+        }//end of s2*/
+        /*else if(iaunit < 0){//h2
             double dc = exp(d), ds = 1/dc;
             dc = (dc + ds)/2; ds = dc - ds;
             //^cosh and sinh of d, done weird to remove redundant calculations
@@ -1562,6 +2405,9 @@ void moveEntity(double dx, double dy, float pos[], float pos2[], float ref[], in
             copypt(ogref,ref);
         }
     }
+    copypt(posnext,pos);
+    copypt(pos2next,pos2);
+    copypt(refnext,ref);
     //std::cout<<iterations<<"\n";
     if(iterations >= maxits) std::cout<<"failsafe trigger\n";
     //if(*cw==0 &&  pos[0]*pos[0] + (pos[1]-2)*(pos[1]-2) > 1.25*1.25 ) printf("error?\n");
@@ -1625,11 +2471,22 @@ int main(){
     /*{//psudosphere case c
         double d = 1.5, ds = sinh(d), dc = cosh(d), l = pi/ds, sl = sinh(l), lc = cosh(l);
         double limit = dc*dc*lc - ds*ds;
+        double p1[3] = {dc*sl,ds,0}, p2[3] = {sinh(1.0/9), 0, cosh(1.0/9)};
+        p1[2] = sqrt(p1[0]*p1[0] + p1[1]*p1[1] + 1);
+        double iso[3][3];
+        h2matto(p1,iso);
+        double isoi[3][3];
+        h2invert(iso,isoi);
+        matxpt(isoi,p2);
         std::vector<std::vector<float>> world0={
         {lc,0,sl, sl,0,lc, dc,mkdest(2,0,2,0,0)},
-        {0,1.00,0, 0,ds,dc, limit,6+0*mkdest(2,0,3,0,0)},
+        {0,1.00,0, 0,ds,dc, limit,mkdest(2,0,3,0,0)},
         {lc,0,-sl, -sl,0,lc, dc,mkdest(2,0,0,0,0)},
-        {0,1.00,0, 0,-ds,dc, limit,6+0*mkdest(2,0,1,0,0)}
+        {0,1.00,0, 0,-ds,dc, limit,mkdest(2,0,1,0,0)},
+        {p1[0],p1[1],p1[2], p2[0],p2[1],p2[2], inf,4},
+        {-p1[0],p1[1],p1[2], -p2[0],p2[1],p2[2], inf,4},
+        {p1[0],-p1[1],p1[2], p2[0],-p2[1],p2[2], inf,4},
+        {-p1[0],-p1[1],p1[2], -p2[0],-p2[1],p2[2], inf,4},
         };
         pawbuffer.push_back(world0);
         worldCurvatures.push_back(-1);
@@ -1669,12 +2526,13 @@ int main(){
 
     /*{//h2 e2 test
         std::vector<std::vector<float>> world0={
-            {0,2,sqrt(4), 0,0,1, 3,mkdest(1,1,0,0,0)},//d*d/2 + 1 = -L for horocycles
+            {0,2,sqrt(5), 0,0,1, inf,mkdest(0,1,0,0,0)},//d*d/2 + 1 = -L for horocycles
             {0,-3,sqrt(8), 0,-1,sqrt(2), 3,6}
         };
         pawbuffer.push_back(world0);
         worldCurvatures.push_back(-1);
-        std::vector<std::vector<float>> world1={{2,3,0, -2,3,0, 4,mkdest(1,0,0,0,0)}};
+        //std::vector<std::vector<float>> world1={{2,3,0, -2,3,0, 4,mkdest(1,0,0,0,0)}};
+        std::vector<std::vector<float>> world1={{2,0,0, 2,2,0, 4,mkdest(0,0,0,0,0)}};
         pawbuffer.push_back(world1);
         worldCurvatures.push_back(0);
         pw = 0; plp[0] = 1; duppw = -1;//signals that the player isn't in a portal
@@ -1687,24 +2545,30 @@ int main(){
 
     {//test stage
         std::vector<std::vector<float>> world0={
-            {0,2,0, 0.5,2,0, 2,mkdest(0,1,0,1,0)},//portal, type 0 (arc), linked to world1, index 0, other side = 1, mirror = 0
-            {2,4,0, 0,4,0, 0,mkdest(1,0,1,0,1)},//portal, type 1(E2 line), linked to world 0, index 1 (itself), side = 0, mirror = 1
+            {0,2,0, 0.5,2,0, 2,mkdest(0,1,0,0,1)},//portal, type 0 (arc), linked to world1, index 0, other side = 1, mirror = 0
+            {0,1.25,0, 1,1.25,0, 0,mkdest(1,0,1,0,1)},//portal, type 1(E2 line), linked to world 0, index 1 (itself), side = 0, mirror = 1
             {0,-5,0, 0,-4,0, 2,mkdest(0,0,3,0,0)},
             {3,-2,0, 2,-2,0, 2,mkdest(0,0,2,0,0)},
             {-2,5,0, -2,1,0, 0,mkdest(1,2,0,0,0)},
+            {4,0,0, 4.5,0,0, 4,mkdest(0,3,0,0,0)},
+            {-3,0,0, -2,0,0, 4,mkdest(0,4,0,0,0)},
+            {0,4,0, sinh(0.5),4,0, 4,mkdest(0,2,2,0,0)},
             {1,1,0, 2,1,0, 0,5},//E2 line wall
             {2,2,0, 3,2,0, 2,4},//arc wall
             {-1.5,1,0, -2.5,1,0, 0,5},
-            {0,1,0, 0,1.7,0, 0,5},
+            {0,1,0, 0,1.5,0, 0,5},
+            {0,2.5,0, 1.0/9,2.5,0, 4,4},
+            {1,1,0, 1,2,0, 0,5},
         };
         pawbuffer.push_back(world0);
         worldCurvatures.push_back(0);//euclidian
         /////////////////////////
         std::vector<std::vector<float>> world1={
-            {0,0,1, 0,0.5,0.866025403784, -1,mkdest(0,0,0,1,0)}, //portal, type 0 (arc), linked to world0, index 0, other side = 1, mirror = 0
-            {0,0,1, 0,1,0, -0.5,4}, //arc wall
-            {-1,0,0, 0,isr2,-isr2, -0.292893218813,4},//arc wall
+            {0,0,1, 0,0.5,0.866025403784, -1,mkdest(0,0,0,0,1)}, //portal, type 0 (arc), linked to world0, index 0, other side = 1, mirror = 0
+            {0,0,1, 0,1,0, -0.25,4}, //arc wall
+            {1,0,0, 0,0.923879533,-0.382683432, -0.076120467,4},
             {0,-1,0, -isr2,0,isr2, -0.1,4},
+            {0.500000000,0.000000000,0.866025404, 0.592943927,0.000000000,0.805243751, -2,4},
         };
         pawbuffer.push_back(world1);
         worldCurvatures.push_back(1);//spherical
@@ -1712,12 +2576,26 @@ int main(){
         //coments WIP
         std::vector<std::vector<float>> world2={
             {0,2,sqrt(4), 0,0,1, 3,mkdest(1,0,4,0,0)},//d*d/2 + 1 = -L for horocycles
+            {0,1,1, 0,2,sqrt(5), 2,mkdest(1,2,1,0,1)},
+            {1.500207901,3.017860025,3.515409347, 2.507112635,5.043377651,5.720251034, inf,mkdest(0,0,7,0,0)},
             {0,3,-sqrt(8), 0,-1,sqrt(2), 3,6},//hyperciclic wall
             {0.984237845,-1.983477923,-1.975578078, -2.004547132,2.004228044,3.005850910, 1.248541267,6},
         };
         pawbuffer.push_back(world2);
         worldCurvatures.push_back(-1);//hyperbolic
         //
+        std::vector<std::vector<float>> world3={
+         {0,0,-1, 0,0.5,0.866025403784, -2,mkdest(0,0,5,0,0)},
+        };
+        pawbuffer.push_back(world3);
+        worldCurvatures.push_back(1);
+        //
+        std::vector<std::vector<float>> world4={
+         {0,0,1, 0,1,0, -2,mkdest(0,0,6,0,0)},
+        };
+        pawbuffer.push_back(world4);
+        worldCurvatures.push_back(1);
+        ///
         pw = 0;//player in world 0
         vec3(pl, 0,0,0);//player at 0,0,0
         vec3(pl2, pl[0],pl[1]+pr,0);//placing the default facing of the player
@@ -1725,6 +2603,37 @@ int main(){
         plp[0] = 1;//setting this to negative 1 mirrors
         duppw = -1;//signals that the player isn't in a portal
     }//*/
+
+    /*{
+        std::vector<std::vector<float>> world0={
+        {2,-3,0, -2,-3,0, 0,mkdest(1,0,1,0,0)},
+        {-3,2,0, -3,-2,0, 0,mkdest(1,0,0,0,0)},
+        {3.5,0,0, 2,0,0, 2,mkdest(0,0,3,0,0)},
+        {0,3.5,0, 0,2,0, 2,mkdest(0,0,2,0,0)},
+        {-4,3,0, -2,5,0, 0,mkdest(1,1,0,1,0)},
+        {2,4,0, 3,5,0, 0, mkdest(1,0,6,1,0)},
+        {4,4,0, 3,3,0, 0,mkdest(1,0,5,1,0)},
+        };
+        pawbuffer.push_back(world0);
+        worldCurvatures.push_back(0);
+        std::vector<std::vector<float>> world1={
+        {-4,3,0, -2,5,0, 0,mkdest(1,0,4,1,0)},
+        {-3,1,0, -3,0,0, 4,mkdest(0,1,2,1,0)},
+        {-3,-3,0, -3,-2,0, 4,mkdest(0,1,1,1,0)},
+        {2,4,0, 3,4,0, 2,mkdest(0,1,4,1,0)},
+        {0,4,0, -1,4,0, 2,mkdest(0,1,3,1,0)},
+        {2,1,0, 5,1,0, 0,mkdest(1,1,6,0,1)},
+        {2,-1,0, 5,-1,0, 0,mkdest(1,1,5,0,1)},
+        };
+        pawbuffer.push_back(world1);
+        worldCurvatures.push_back(0);
+        pw = 0;//player in world 0
+        vec3(pl, 0,0,0);//player at 0,0,0
+        vec3(pl2, pl[0],pl[1]+pr,0);//placing the default facing of the player
+        vec3(camRef, pl[0]+1,pl[1],0);
+        plp[0] = 1;//setting this to negative 1 mirrors
+        duppw = -1;//signals that the player isn't in a portal
+    }*/
 
 
 
@@ -2113,7 +3022,7 @@ int main(){
                         backOnHyperboloid(pl2);
                     }
                     if(duppw >= 0 && dx == 0 && dy == 0){
-                        updateDuplicateRot(pl,pl2,duppl,duppl2,pw,iopip);//TODO update this to work with H2
+                        updateDuplicateRot(pl,pl2,duppl,duppl2,pw,iopip);
                         //banaid V
                         //moveEntity(ped,0,pl,pl2,camRef,&pw,plp);
                         //moveEntity(-ped,0,pl,pl2,camRef,&pw,plp);
@@ -2136,6 +3045,7 @@ int main(){
                 LOG[loge][11] = duppw;
                 LOG[loge][12] = diopip;
                 LOG[loge][13] = dx; LOG[loge][14] = dy;
+                //MOVE
                 moveEntity(dx,dy,pl,pl2,camRef,&pw,plp);
                 //printP(pl);
                 //printP(camRef);
@@ -2144,18 +3054,6 @@ int main(){
             }
             if(glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && zoom<1) zoom+=pow(2,floor(log2(zoom)-4));
             if(glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS && zoom>pr/pi) zoom-=pow(2,floor(log2(zoom)-4));
-            glUniform3fv(glGetUniformLocation(shaderProgram,"pl"),1,&pl[0]);
-            glUniform3fv(glGetUniformLocation(shaderProgram,"pl2"),1,&pl2[0]);
-            glUniform3fv(glGetUniformLocation(shaderProgram,"camRef"),1,&camRef[0]);
-            glUniform3fv(glGetUniformLocation(shaderProgram,"duppl"),1,&duppl[0]);
-            glUniform3fv(glGetUniformLocation(shaderProgram,"duppl2"),1,&duppl2[0]);
-            glUniform1f(glGetUniformLocation(shaderProgram, "mirrorPlayer"),plp[0]);
-            glUniform1f(glGetUniformLocation(shaderProgram, "mirrorDup"),mirrorDup);
-            glUniform1f(glGetUniformLocation(shaderProgram, "zoom"),zoom);
-            glUniform1i(glGetUniformLocation(shaderProgram, "pw"),pw);
-            glUniform1i(glGetUniformLocation(shaderProgram, "duppw"),duppw);
-            glUniform1i(glGetUniformLocation(shaderProgram, "iopip"),iopip);
-            glUniform1i(glGetUniformLocation(shaderProgram, "diopip"),diopip);
         }
 
 
@@ -2199,6 +3097,28 @@ int main(){
         //glUniform1fv(pawl,512,paw);
         //
         //1st pass
+        float playerLocation[3];
+        copypt(pl,playerLocation);
+        glUniform3fv(glGetUniformLocation(shaderProgram,"pl"),1,&playerLocation[0]);
+        float playerLocation2[3];
+        copypt(pl2,playerLocation2);
+        glUniform3fv(glGetUniformLocation(shaderProgram,"pl2"),1,&playerLocation2[0]);
+        float cameraReference[3];
+        copypt(camRef,cameraReference);
+        glUniform3fv(glGetUniformLocation(shaderProgram,"camRef"),1,&cameraReference[0]);
+        float duplicatePlayerLocation[3];
+        copypt(duppl,duplicatePlayerLocation);
+        glUniform3fv(glGetUniformLocation(shaderProgram,"duppl"),1,&duplicatePlayerLocation[0]);
+        float duplicatePlayerLocation2[3];
+        copypt(duppl2,duplicatePlayerLocation2);
+        glUniform3fv(glGetUniformLocation(shaderProgram,"duppl2"),1,&duplicatePlayerLocation2[0]);
+        glUniform1f(glGetUniformLocation(shaderProgram, "mirrorPlayer"),plp[0]);
+        glUniform1f(glGetUniformLocation(shaderProgram, "mirrorDup"),mirrorDup);
+        glUniform1f(glGetUniformLocation(shaderProgram, "zoom"),zoom);
+        glUniform1i(glGetUniformLocation(shaderProgram, "pw"),pw);
+        glUniform1i(glGetUniformLocation(shaderProgram, "duppw"),duppw);
+        glUniform1i(glGetUniformLocation(shaderProgram, "iopip"),iopip);
+        glUniform1i(glGetUniformLocation(shaderProgram, "diopip"),diopip);
         glBindFramebuffer(GL_FRAMEBUFFER, framebuffer1);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
