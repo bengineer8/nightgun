@@ -12,8 +12,8 @@ Linux:
     -1. Remember that you, like me, signed up for pain when you installed Linux.
     0. Download and install glfw, following the instructions listed in the top answer here: https://stackoverflow.com/questions/17768008/how-to-build-install-glfw-3-and-use-it-in-a-linux-project
     setup done
-    2. Commpand to compile: g++ -O3 -w code.cpp -o nightgun -lglfw
-    cmake -G "Unix Makefiles"
+    2. Commpands to compile at the top of the code.cpp file
+    3. rightclick in the folder, click "open terminal", and type "./nightgun" in the terminal to run
 
 Mac:
     coming not any time soon
