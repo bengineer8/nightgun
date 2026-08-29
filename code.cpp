@@ -18,7 +18,6 @@
 
 //#include <windows.h>
 
-
 #define positionsSize 1048576
 
 //SDL_Joystick* gGameController = NULL
