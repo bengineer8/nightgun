@@ -21,7 +21,7 @@ out vec4 FragColor;
 uniform int res=800;
 uniform float T=1.0,pz,pcx,pcy,pcz,zoom=1.0;
 uniform vec2 playerFacing = vec2(1,0);
-uniform vec3 pl,pl2,camRef,duppl,duppl2;
+uniform vec3 pl,pl2,camRef,playerduploc,playerduploc2;
 uniform int pw;//player world
 uniform int duppw;
 uniform float mirrorPlayer = 1;//-1 for mirror player
@@ -376,9 +376,9 @@ void main(){
                             float grad=1-distance(gl,pl)/pr;
                             if(distance(gl,pl2)<pr) FragColor=vec4(1,grad,1,1);
                             else FragColor=vec4(0,grad,1,1);
-                        } else if(distance(gl,duppl)<pr && current_world==duppw && e2pbc(gl,duppl,duppw)){
-                            float grad=1-distance(gl,duppl)/pr;
-                            if(distance(gl,duppl2)<pr) FragColor=vec4(1,grad,1,1);
+                        } else if(distance(gl,playerduploc)<pr && current_world==duppw && e2pbc(gl,playerduploc,duppw)){
+                            float grad=1-distance(gl,playerduploc)/pr;
+                            if(distance(gl,playerduploc2)<pr) FragColor=vec4(1,grad,1,1);
                             else FragColor=vec4(0,grad,1,1);
                         } else{
                             if(length(gl)<tpi&&iterations<10){
@@ -508,9 +508,9 @@ void main(){
                     }
                     /*
 
-                    else if(distance(gl,duppl)<pr && current_world==duppw && e2pbc(gl,duppl,duppw)){
-                        float grad=distance(gl,duppl)/pr;
-                        if(distance(gl,duppl2)<pr) FragColor=vec4(1,grad,1,1);
+                    else if(distance(gl,playerduploc)<pr && current_world==duppw && e2pbc(gl,playerduploc,duppw)){
+                        float grad=distance(gl,playerduploc)/pr;
+                        if(distance(gl,playerduploc2)<pr) FragColor=vec4(1,grad,1,1);
 
                     */
                 } else {
@@ -698,10 +698,10 @@ void main(){
                     float side = mirrorPlayer*e2side(pl,pl2,endOfRay);
                     if(distance(endOfRay,pl2) < pr) FragColor=vec4(1,grad,side,1);
                     else FragColor=vec4(0,grad,side,1);
-                } else if(distance(endOfRay,duppl) < pr && current_world == duppw && e2PortalBetween(endOfRay,duppl,diopip)){
-                    float grad = distance(endOfRay,duppl)/pr;
-                    float side = mirrorDup*e2side(duppl,duppl2,endOfRay);
-                    if(distance(endOfRay,duppl2) < pr) FragColor=vec4(1,grad,side,1);
+                } else if(distance(endOfRay,playerduploc) < pr && current_world == duppw && e2PortalBetween(endOfRay,playerduploc,diopip)){
+                    float grad = distance(endOfRay,playerduploc)/pr;
+                    float side = mirrorDup*e2side(playerduploc,playerduploc2,endOfRay);
+                    if(distance(endOfRay,playerduploc2) < pr) FragColor=vec4(1,grad,side,1);
                     else FragColor=vec4(0,grad,side,1);
                 } else {
                     vec2 z = vec2(endOfRay.x,endOfRay.y);
@@ -786,10 +786,10 @@ void main(){
                         float side = -mirrorPlayer*sign(dot(cross(pl,pl2),endOfRay));
                         if(dot(endOfRay,pl2) > prc) FragColor = vec4(1,grad,side,1);
                         else FragColor=vec4(0,grad,side,1);
-                    } else if(dot(endOfRay,duppl)>prc && current_world==duppw && s2PortalBetween(endOfRay,duppl,diopip)){//BUG: disappears if very close to portal edge
-                        float grad = smallArccos(dot(endOfRay,duppl))/pr;
-                        float side = -mirrorDup*sign(dot(cross(duppl,duppl2),endOfRay));
-                        if(dot(endOfRay,duppl2)>prc) FragColor = vec4(1,grad,side,1);
+                    } else if(dot(endOfRay,playerduploc)>prc && current_world==duppw && s2PortalBetween(endOfRay,playerduploc,diopip)){//BUG: disappears if very close to portal edge
+                        float grad = smallArccos(dot(endOfRay,playerduploc))/pr;
+                        float side = -mirrorDup*sign(dot(cross(playerduploc,playerduploc2),endOfRay));
+                        if(dot(endOfRay,playerduploc2)>prc) FragColor = vec4(1,grad,side,1);
                         else FragColor = vec4(0,grad,side,1);
                     } else {
                         float k=sign(endOfRay.x*endOfRay.y*endOfRay.z);
@@ -916,11 +916,11 @@ void main(){
                     if(lidot(endOfRay,pl2) < prch) FragColor = vec4(1,grad,side,1);
                     else FragColor = vec4(0,grad,side,1);
                 }
-                grad = lidot(endOfRay,duppl);
-                if(grad < prch && duppw == current_world && h2PortalBetween(duppl,endOfRay,diopip)){
+                grad = lidot(endOfRay,playerduploc);
+                if(grad < prch && duppw == current_world && h2PortalBetween(playerduploc,endOfRay,diopip)){
                     grad = sqrt(2*grad - 2)/pr;
-                    float side = mirrorDup*sign(lidot(icross(duppl,duppl2),endOfRay));
-                    if(lidot(endOfRay,duppl2) < prch) FragColor = vec4(1,grad,side,1);
+                    float side = mirrorDup*sign(lidot(icross(playerduploc,playerduploc2),endOfRay));
+                    if(lidot(endOfRay,playerduploc2) < prch) FragColor = vec4(1,grad,side,1);
                     else FragColor = vec4(0,grad,side,1);
                 }
                 /*
