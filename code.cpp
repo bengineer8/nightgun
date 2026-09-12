@@ -749,10 +749,7 @@ void updateDuplicateRot(double pos[], double pos2[], double dpos[], double dpos2
 }
 
 
-void createDuplicate(double RL[], double RD, double p[], int ipi, int* w, double pos1[], double pos2[]){
-    //RL[2] = RD;
-    //printP(RL);
-    //
+void createDuplicate(double RL[], double RD, double p[], int ipi, int& w, double pos1[], double pos2[]){
     mirrorDup = plp[0];//TODO make this entity specific
     int dat = (int)paw[ipi + 7];
     int type = dat & 3;
@@ -768,9 +765,9 @@ void createDuplicate(double RL[], double RD, double p[], int ipi, int* w, double
         p[0]=-p[0];
         p[1]=-p[1];
     }
-    *w=((dat)>>3)&511;
-    double iaunit=worldCurvatures[*w];
-    int i=int(paw[*w])+sizeOfPow*((dat>>12)&1023);
+    w = ((dat)>>3)&511;
+    double iaunit=worldCurvatures[w];
+    int i=int(paw[w])+sizeOfPow*((dat>>12)&1023);
     diopip = i;//TODO make this entity specific
     double p1[]={paw[i],paw[i+1],paw[i+2]},p2[]={paw[i+3],paw[i+4],paw[i+5]};
     if(iaunit == 0){
@@ -820,7 +817,7 @@ void createDuplicate(double RL[], double RD, double p[], int ipi, int* w, double
         matxpt(roti,pos2);
     }
     if(iaunit < 0){
-        if(type > 0) {//bandaid TODO actually fix this
+        if(type > 0) {
             RD = -RD;
             p[0] = -p[0];
             p[1] = -p[1];
@@ -865,10 +862,10 @@ void createDuplicate(double RL[], double RD, double p[], int ipi, int* w, double
     }
 }
 
-void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[], int* cw, float props[],bool& abortMove){
+void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[], int& cw, float props[],bool& abortMove){
     int maxits = 9;
     bool bounce = 0;//temp name, disables wall colliders and portal dupe creation because they use the same code. Makes you bounce off walls because that is what they do as a failsafe for if you go too fast to get past their colliders.
-    //printf("dx:%.19lf \t dy:%.19lf \t pos:%.19f, %.19f, %.19f \t cam:%.19f, %.19f, %.19f \t cw:%i\n", dx, dy, pos[0], pos[1], pos[2], ref[0], ref[1], ref[2], *cw);
+    //printf("dx:%.19lf \t dy:%.19lf \t pos:%.19f, %.19f, %.19f \t cam:%.19f, %.19f, %.19f \t cw:%i\n", dx, dy, pos[0], pos[1], pos[2], ref[0], ref[1], ref[2], cw);
     //WIP
     //TODO: Make it so all internal calculations are doubles
     double ogpos[3], ogpos2[3], ogref[3], ogplayerduploc[3], ogplayerduploc2[3];
@@ -876,7 +873,7 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
     copypt(pos,ogpos);
     copypt(pos2,ogpos2);
     copypt(ref,ogref);
-    int ogcw = *cw;
+    int ogcw = cw;
     float ogprop0 = props[0];
     int ogiopip = iopip;
     int ogduppw = duppw;
@@ -899,7 +896,7 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
     double rotmstart[3][3];
     bool debug = false;
     while(d>0 && iterations < maxits){
-        float iaunit = worldCurvatures[*cw];
+        float iaunit = worldCurvatures[cw];
         //d += ped;
         iterations++;
         //if(iterations>5) abort();
@@ -935,11 +932,11 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
                 rot[0] = rotmstart[0][0]; rot[1] = rotmstart[0][1];
                 off[0] = rotmstart[1][0]; off[1] = rotmstart[1][1];
             }
-            int i=(int)paw[*cw],cii=-1;
+            int i=(int)paw[cw],cii=-1;
             double cip1[]={0,0},cip2[]={0,0};
             double cid=d;
             //portal collision code below
-            while(i<paw[*cw+1]){
+            while(i<paw[cw+1]){
                 double p1[]={paw[i],paw[i+1]},p2[]={paw[i+3],paw[i+4]};
                 r=(p1[0]-p2[0])*(p1[0]-p2[0])+(p1[1]-p2[1])*(p1[1]-p2[1]);//actually r^2
                 double al=paw[i+6];
@@ -1037,8 +1034,8 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
                         EA[0]=EA[1];
                         EA[1]=t;
                     }
-                    *cw=((dat)>>3)&511;
-                    int di=int(paw[*cw])+sizeOfPow*((dat>>12)&1023);
+                    cw=((dat)>>3)&511;
+                    int di=int(paw[cw])+sizeOfPow*((dat>>12)&1023);
                     si = di;
                     sp1[0]=paw[di];sp1[1]=paw[di+1];sp1[2]=paw[di+2];
                     sp2[0]=paw[di+3];sp2[1]=paw[di+4];sp2[2]=paw[di+5];
@@ -1064,9 +1061,9 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
                     //
                     double RL[3], pos2r[3], posc[2];
                     double closestpt[2];
-                    int i = (int)paw[*cw];
+                    int i = (int)paw[cw];
                     bool inwall = 0, inportal = 0;
-                    while(i < paw[*cw + 1] && !inwall){
+                    while(i < paw[cw + 1] && !inwall){
                         bool valid = 0;
                         double cp[2];
                         double p1[] = {paw[i], paw[i + 1]}, p2[] = {paw[i + 3],paw[i + 4]};
@@ -1118,7 +1115,7 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
                                     cp[0] -= posc[0];cp[1] -= posc[1];
                                     double pos2c[2] = {pos2[0] - pos[0], pos2[1] - pos[1]};
                                     double pos2r[3] = {-(pos2c[0]*cp[0] + pos2c[1]*cp[1])/pr/RL[2], (pos2c[0]*cp[1] - pos2c[1]*cp[0])/pr/RL[2], pr};
-                                    createDuplicate(RL,RL[2],pos2r,i,&duppw,playerduploc,playerduploc2);
+                                    createDuplicate(RL,RL[2],pos2r,i,duppw,playerduploc,playerduploc2);
                                     iopip=i;//make this entity specific later
                                 }
                             } else inportal = 0;
@@ -1146,7 +1143,7 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
                 }//end of collision checks
                 //else d=0;
 ;
-                //if(i==paw[*cw+1]) d=0;
+                //if(i==paw[cw+1]) d=0;
             }//end of if there are no portals
 
 
@@ -1188,10 +1185,10 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
                 copymat(rotmstart,rot);
             }
             //checks for portals
-            int i = (int)paw[*cw],cii=-1;
+            int i = (int)paw[cw],cii=-1;
             double cip1[3],cip2[3],cip[3];
             double cidr=s2disrank(dc,ds);
-            while(i<(int)paw[*cw+1]){
+            while(i<(int)paw[cw+1]){
                 double p1[3]={paw[i],paw[i+1],paw[i+2]}, p2[3]={paw[i+3],paw[i+4],paw[i+5]};
                 rc=dot(p1,p2);
                 rs = 1 - rc*rc;//actually rs^2, just reusing space
@@ -1249,8 +1246,8 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
                     else side=1;
                     if(((dat>>23)&1)==1) {mirror=-1;props[0]=-props[0];}
                     else mirror=1;
-                    *cw=(dat>>3)&511;
-                    int di=(int)(paw[*cw])+sizeOfPow*((dat>>12)&1023);
+                    cw=(dat>>3)&511;
+                    int di=(int)(paw[cw])+sizeOfPow*((dat>>12)&1023);
                     vec3(sp1, paw[di],paw[di+1],paw[di+2]);
                     vec3(sp2, paw[di+3],paw[di+4],paw[di+5]);
                     si=di;
@@ -1292,10 +1289,10 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
                 if(!bounce){
                     double cp[3], closestpt[3], ip1[3], ip2[3];
                     double cosODis;
-                    i = (int)paw[*cw];
+                    i = (int)paw[cw];
                     int indexOfIntersection = -1;
                     char inwall = 0, inportal = 0;
-                    while(i<(int)paw[*cw+1] && inwall==0){
+                    while(i<(int)paw[cw+1] && inwall==0){
                         bool valid = 1;
                         char checkifinportal = 1;
                         double p1[3]={paw[i],paw[i+1],paw[i+2]}, p2[3]={paw[i+3],paw[i+4],paw[i+5]};
@@ -1358,7 +1355,7 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
                             relLoc[0] = (dot(closestpt,ip2) - cr2)/(1 - cr2);
                             relLoc[1] = safe_sqrt(1 - relLoc[0]*relLoc[0])*s2side(ip1,ip2,closestpt);
                             relLoc[2] *= acos(cosODis);
-                            createDuplicate(relLoc,relLoc[2],temppos2r,indexOfIntersection,&duppw,playerduploc,playerduploc2);
+                            createDuplicate(relLoc,relLoc[2],temppos2r,indexOfIntersection,duppw,playerduploc,playerduploc2);
                             iopip = indexOfIntersection;//make this entity specific later
                         }
                         if(inwall > 0){
@@ -1434,8 +1431,8 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
             double cip1[3], cip2[3], cip[3];
             cip[0] = ds;
             int cii = -1;
-            int i = int(paw[*cw]);
-            while(i < (int)paw[*cw + 1]){
+            int i = int(paw[cw]);
+            while(i < (int)paw[cw + 1]){
                 double p1[3] = {paw[i],paw[i + 1],paw[i + 2]},
                 p2[3] = {paw[i + 3],paw[i + 4],paw[i + 5]};
                 double limit = paw[i + 6];
@@ -1487,8 +1484,8 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
                     if(((dat>>22)&1)==1) side = -1;
                     mirror = 1;
                     if(((dat>>23)&1)==1) {mirror=-1;props[0]=-props[0];}//
-                    *cw = (dat>>3)&511;
-                    int di = (int)(paw[*cw]) + sizeOfPow*((dat>>12)&1023);
+                    cw = (dat>>3)&511;
+                    int di = (int)(paw[cw]) + sizeOfPow*((dat>>12)&1023);
                     vec3(sp1, paw[di],paw[di+1],paw[di+2]);
                     vec3(sp2, paw[di+3],paw[di+4],paw[di+5]);
                     si = di;
@@ -1538,14 +1535,14 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
                 backOnHyperboloid(ref);
                 d = 0;
                 if(!bounce){
-                    int i = paw[*cw];
+                    int i = paw[cw];
                     double posc[3];
                     copypt(pos,posc);
                     bool inwall = false;
                     bool inportal = false;
                     double coshdis;
                     double closestpoint[3];
-                    while(i < paw[*cw + 1] && !inwall){
+                    while(i < paw[cw + 1] && !inwall){
                         bool valid = 0;
                         double p1[3] = {paw[i],paw[i + 1],paw[i + 2]},
                         p2[3] = {paw[i + 3],paw[i + 4],paw[i + 5]};
@@ -1616,7 +1613,7 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
                                         relLoc[0] = cL;
                                         relLoc[1] = sL;
                                         relLoc[2] *= acosh(coshdis);
-                                        createDuplicate(relLoc,relLoc[2],temppos2r,i,&duppw,playerduploc,playerduploc2);
+                                        createDuplicate(relLoc,relLoc[2],temppos2r,i,duppw,playerduploc,playerduploc2);
                                         iopip = i;//TODO make this entity specific later
                                 } else {
                                     inwall = true;
@@ -1658,7 +1655,7 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
         }//end of h2*/
     }
     if(iterations >= maxits){
-        *cw = ogcw;
+        cw = ogcw;
         copypt(ogpos,pos);
         copypt(ogpos2,pos2);
         copypt(ogref,ref);
@@ -1671,7 +1668,7 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
         abortMove = true;
     }
 
-    /*if(ogcw == *cw){
+    /*if(ogcw == cw){
         double posc[3];
         copypt(pos,posc);
         posc[0] -= ogpos[0];posc[1] -= ogpos[1];posc[2] -= ogpos[2];
@@ -1683,7 +1680,7 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
     }//*/
     //std::cout<<iterations<<"\n";
     //if(iterations >= maxits) std::cout<<"failsafe trigger\n";
-    //if(*cw==0 &&  pos[0]*pos[0] + (pos[1]-2)*(pos[1]-2) > 1.25*1.25 ) printf("error?\n");
+    //if(cw==0 &&  pos[0]*pos[0] + (pos[1]-2)*(pos[1]-2) > 1.25*1.25 ) printf("error?\n");
 }
 
 
@@ -2505,8 +2502,8 @@ int main(){
             pawbuffer.push_back(world30);
             worldCurvatures.push_back(-1);
         }
-        pw = 30;//player world
-        vec3(pl,0,0,1);//player location
+        pw = 21;//player world
+        vec3(pl,0,0,0);//player location
         //vec3(pl, -1/sqrt(3),-1/sqrt(3),-1/sqrt(3));
         vec3(pl2, pl[0],pl[1]+pr,0);//placing the default facing of the player
         vec3(camRef, pl[0]+1,pl[1],0);
@@ -2956,14 +2953,10 @@ int main(){
                 dx /= steps; dy /= steps;
                 while(steps > 0){
                     bool abortMove = false;
-                    moveEntity(dx,dy,pl,pl2,camRef,&pw,plp,abortMove);
+                    moveEntity(dx,dy,pl,pl2,camRef,pw,plp,abortMove);
                     if(abortMove) steps = 0;
                     else steps--;
-                }//*/
-                //if( (pw == ogpw && disSquared(pl,ogpl) > 0.00008) || (pw == ogduppw && disSquared(pl,ogplayerduploc) > 0.00008)){
-                //    if(pw == ogpw) printf("%lf\n",disSquared(pl,ogpl));
-                //    else printf("%lf\n",disSquared(pl,ogplayerduploc));
-                //}
+                }
                 if( (pw == ogpw && disSquared(pl,ogpl) < 0.00008) || (pw == ogduppw && disSquared(pl,ogplayerduploc) < 0.00008)){
                     copypt(ogpl,pl);
                     copypt(ogpl2,pl2);
@@ -2972,8 +2965,6 @@ int main(){
                     copypt(ogplayerduploc2,playerduploc2);
                     pw = ogpw, duppw = ogduppw, diopip = ogdiopip, iopip = ogiopip;
                 }//*/
-
-                //moveEntity(dx,dy,pl,pl2,camRef,&pw,plp);
                 //printP(pl);
                 //printP(camRef);
                 //printP(playerduploc);
