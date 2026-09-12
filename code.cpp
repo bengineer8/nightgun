@@ -18,6 +18,7 @@
 
 //#include <windows.h>
 
+
 #define positionsSize 1048576
 
 //SDL_Joystick* gGameController = NULL
@@ -51,7 +52,7 @@ const char *vertexShaderSource = "#version 430 core\n"
     "}\0";
 float plo[3];//player orientation
 double pl[3], pl2[3], camRef[3];
-double duppl[3],duppl2[3];
+double playerduploc[3],playerduploc2[3];
 float plp[1],paw[positionsSize];//player location, ..., player properties(mirror view flag (flip y)), duplicate player location, used for display purposes ,portals and walls
 float mirrorDup = 1;
 float fortyfivedegrot[][3]={{isr2,isr2,0},{-isr2,isr2,0},{0,0,1}};
@@ -100,6 +101,11 @@ double arctan(double s, double c){
 double disSquaredXY(double a[], double b[]){
     double c[2] = {a[0] - b[0], a[1] - b[1]};
     return c[0]*c[0] + c[1]*c[1];
+}
+
+double disSquared(double a[], double b[]){
+    double c[3] = {a[0] - b[0], a[1] - b[1], a[2] - b[2]};
+    return c[0]*c[0] + c[1]*c[1] + c[2]*c[2];
 }
 
 void vec3(double v[], double x, double y, double z){
@@ -386,6 +392,82 @@ bool h2PortalBetween(double A[3], double B[3], int i){
         if(iA*s > k && k > s*iB) return true;
     }
     return false;
+}
+
+std::vector<float> s2threepointstowall(double p5[], double p3[], double p4[]){
+    //getting normal
+    double p1[3], p3c[3], p4c[3];
+    vec3(p3c, p3[0] - p5[0],p3[1] - p5[1],p3[2] - p5[2]);
+    vec3(p4c, p4[0] - p5[0],p4[1] - p5[1],p4[2] - p5[2]);
+    cross(p3c,p4c,p1);
+    backOnSphere(p1);
+    //getting mitpoint
+    double m1[3][3], m2[3][3];
+    s2matto(p1,m1);
+    matxpt(m1,p3);
+    matxpt(m1,p4);
+    matxpt(m1,p5);
+    double r = sqrt(1 - p3[2]*p3[2]);
+    double p2[] = {p3[1] - p4[1],p4[0] - p3[0],p4[2]};
+    double s = r/sqrt(p2[0]*p2[0] + p2[1]*p2[1]);
+    p2[0] *= s; p2[1] *= s;
+    //correcting if wrong midpoint;
+    p3[0] -= p2[0]; p3[1] -= p2[1];
+    p5[0] -= p2[0]; p5[1] -= p2[1];
+    if(p5[0]*p5[0] + p5[1]*p5[1] > p3[0]*p3[0] + p3[1]*p3[1]){
+        p2[0] *= -1; p2[1] *= -1;
+    }
+    double limit = (dot(p2,p4) - 1.00001)/r/r;
+    transpose(m1,m2);
+    matxpt(m2,p2);
+    backOnSphere(p2);
+    std::vector<float> wall = {p1[0],p1[1],p1[2], p2[0],p2[1],p2[2], limit,4};
+    return wall;
+    //...
+}
+
+std::vector<float> h2threepointstowall(double p2[], double p3[], double p4[]){
+    double c,s,d;
+    double p3c[3], p4c[3];
+    copypt(p3,p3c);
+    copypt(p4,p4c);
+    p3c[0] -= p2[0];p3c[1] -= p2[1];p3c[2] -= p2[2];
+    p4c[0] -= p2[0];p4c[1] -= p2[1];p4c[2] -= p2[2];
+    double p1[3];
+    cross(p3c,p4c,p1);
+    p1[2] *= -1;
+    s = lidot(p1,p1);
+    int m = sign(s);
+    if(s != 0){
+        s = sqrt(m/s);
+    }
+    p1[0] *= s;p1[1] *= s;p1[2] *= s;
+    double k = lidot(p1,p2);
+    double p1c[3];
+    copypt(p1,p1c);
+    copypt(p4,p4c);
+    double m1[3][3],m2[3][3];
+    h2matto(p3,m1);
+    matxpt(m1,p4c);
+    d = sqrt(p4c[0]*p4c[0]+p4c[1]*p4c[1]);
+    c = p4c[0]/d;s = p4c[1]/d;
+    rotXY(m1,-s,-c);
+    rotate(p4c[0],p4c[1],-s,-c);
+    c = lidot(p3,p4);
+    c = sqrt((c+1)/2);
+    s = sqrt(c*c-1);
+    lorentzYZ(m1,c,s);
+    matxpt(m1,p2);
+    matxpt(m1,p1c);
+    double B = k*p1c[0];
+    p2[0] = (B+sign(p2[0])*sqrt(B*B+m*(k*k - p1c[2]*p1c[2])))/m;
+    p2[1] = 0;
+    p2[2] = sqrt(p2[0]*p2[0]+1);
+    h2invert(m1,m2);
+    matxpt(m2,p2);
+    c = lidot(p2,p3);
+    std::vector<float> wall = {p1[0],p1[1],p1[2], p2[0],p2[1],p2[2], 1.0000001*c,5-m};
+    return wall;
 }
 
 void addExtraToPOW2(std::vector<float>& G, float iaunit){
@@ -783,23 +865,24 @@ void createDuplicate(double RL[], double RD, double p[], int ipi, int* w, double
     }
 }
 
-void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[], int* cw, float props[]){
-    int maxits = 19;
+void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[], int* cw, float props[],bool& abortMove){
+    int maxits = 9;
     bool bounce = 0;//temp name, disables wall colliders and portal dupe creation because they use the same code. Makes you bounce off walls because that is what they do as a failsafe for if you go too fast to get past their colliders.
     //printf("dx:%.19lf \t dy:%.19lf \t pos:%.19f, %.19f, %.19f \t cam:%.19f, %.19f, %.19f \t cw:%i\n", dx, dy, pos[0], pos[1], pos[2], ref[0], ref[1], ref[2], *cw);
     //WIP
     //TODO: Make it so all internal calculations are doubles
-    double ogpos[3], ogpos2[3], ogref[3], ogduppl[3], ogduppl2[3];
-    //iopip,duppl,duppl2
-    int ogcw = *cw;
+    double ogpos[3], ogpos2[3], ogref[3], ogplayerduploc[3], ogplayerduploc2[3];
+    //iopip,playerduploc,playerduploc2
     copypt(pos,ogpos);
     copypt(pos2,ogpos2);
     copypt(ref,ogref);
+    int ogcw = *cw;
     float ogprop0 = props[0];
     int ogiopip = iopip;
     int ogduppw = duppw;
-    copypt(duppl,ogduppl);
-    copypt(duppl2,ogduppl2);
+    int ogdiopip = diopip;
+    copypt(playerduploc,ogplayerduploc);
+    copypt(playerduploc2,ogplayerduploc2);
     duppw = -1;//temporary hard coding, make it only do this for the entity specific duplicat later
     iopip = -1;
     diopip = -1;
@@ -807,7 +890,6 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
     char type = 0,mirror=1,side=0;
     int si=-1;
     if(props[0]==-1) {dy=-dy;}//correct the confusion of the player
-    double dxtot = dx, dytot = dy;
     double d=sqrt(dx*dx+dy*dy);
     dx/=d;dy/=d;
     double sp1[]={pos[0],pos[1],pos[2]}, sp2[]={ref[0],ref[1],ref[2]};
@@ -818,7 +900,7 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
     bool debug = false;
     while(d>0 && iterations < maxits){
         float iaunit = worldCurvatures[*cw];
-        d+=ped;
+        //d += ped;
         iterations++;
         //if(iterations>5) abort();
         if(iaunit==0){//e2
@@ -1036,7 +1118,7 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
                                     cp[0] -= posc[0];cp[1] -= posc[1];
                                     double pos2c[2] = {pos2[0] - pos[0], pos2[1] - pos[1]};
                                     double pos2r[3] = {-(pos2c[0]*cp[0] + pos2c[1]*cp[1])/pr/RL[2], (pos2c[0]*cp[1] - pos2c[1]*cp[0])/pr/RL[2], pr};
-                                    createDuplicate(RL,RL[2],pos2r,i,&duppw,duppl,duppl2);
+                                    createDuplicate(RL,RL[2],pos2r,i,&duppw,playerduploc,playerduploc2);
                                     iopip=i;//make this entity specific later
                                 }
                             } else inportal = 0;
@@ -1048,7 +1130,6 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
                                 dy = -(refc[0]*cp[1] - refc[1]*cp[0])/d;
                                 if(inportal) d = 1.01*ped - d;
                                 else d = 1.01*playerWallCollisionr - d;
-                                dxtot += d*dx; dytot += d*dy;
                                 mirror=1;
                                 type=0;si=-1;
                                 sp1[0]=pos[0];
@@ -1277,7 +1358,7 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
                             relLoc[0] = (dot(closestpt,ip2) - cr2)/(1 - cr2);
                             relLoc[1] = safe_sqrt(1 - relLoc[0]*relLoc[0])*s2side(ip1,ip2,closestpt);
                             relLoc[2] *= acos(cosODis);
-                            createDuplicate(relLoc,relLoc[2],temppos2r,indexOfIntersection,&duppw,duppl,duppl2);
+                            createDuplicate(relLoc,relLoc[2],temppos2r,indexOfIntersection,&duppw,playerduploc,playerduploc2);
                             iopip = indexOfIntersection;//make this entity specific later
                         }
                         if(inwall > 0){
@@ -1293,7 +1374,6 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
                             double t = sqrt(closestpt[0]*closestpt[0] + closestpt[1]*closestpt[1]);
                             dx = -closestpt[0]/t;
                             dy = -closestpt[1]/t;
-                            dxtot += d*dx; dytot += d*dy;
                             EL[0] = dx;
                             EL[1] = -dy;
                             si = -1;
@@ -1536,7 +1616,7 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
                                         relLoc[0] = cL;
                                         relLoc[1] = sL;
                                         relLoc[2] *= acosh(coshdis);
-                                        createDuplicate(relLoc,relLoc[2],temppos2r,i,&duppw,duppl,duppl2);
+                                        createDuplicate(relLoc,relLoc[2],temppos2r,i,&duppw,playerduploc,playerduploc2);
                                         iopip = i;//TODO make this entity specific later
                                 } else {
                                     inwall = true;
@@ -1563,7 +1643,6 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
                         //printf("%.99lf\n",r);
                         dx = -closestpoint[0]/r;
                         dy = -closestpoint[1]/r;
-                        dxtot += d*dx; dytot += d*dy;
                         //printf("%lf\t%lf\t%lf\n",dx,dy,d);
                         EL[0] = dx;
                         EL[1] = -dy;
@@ -1578,17 +1657,18 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
             }
         }//end of h2*/
     }
-    //printf("%lf\t%lf\n",abs(dxtot),abs(dytot));
-    if((abs(dxtot) < 2*ped && abs(dytot) < 2*ped) || iterations >= maxits){//NOTE: this assumes that distances are small enough for E2 to be a good aproximation
+    if(iterations >= maxits){
         *cw = ogcw;
         copypt(ogpos,pos);
         copypt(ogpos2,pos2);
         copypt(ogref,ref);
         props[0] = ogprop0;
         int iopip = ogiopip;
+        int diopip = ogdiopip;
         int duppw = ogduppw;
-        copypt(ogduppl,duppl);
-        copypt(ogduppl2,duppl2);
+        copypt(ogplayerduploc,playerduploc);
+        copypt(ogplayerduploc2,playerduploc2);
+        abortMove = true;
     }
 
     /*if(ogcw == *cw){
@@ -1602,7 +1682,7 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
         }
     }//*/
     //std::cout<<iterations<<"\n";
-    if(iterations >= maxits) std::cout<<"failsafe trigger\n";
+    //if(iterations >= maxits) std::cout<<"failsafe trigger\n";
     //if(*cw==0 &&  pos[0]*pos[0] + (pos[1]-2)*(pos[1]-2) > 1.25*1.25 ) printf("error?\n");
 }
 
@@ -1846,9 +1926,9 @@ int main(){
         {-1,1.5,0,0,1.5,0,0,mkdest(1,3,1,0,1)},
         {4,0,0, 4,1,0, 0,mkdest(1,21,1,0,0)},
         {-0.5,-1.25,0, -0.5,-1.75,0, 2-2*cos(1.25),mkdest(0,18,4,0,0)},
-        {-1+.00,0,0, -2.00,0,0, 2.00,4},
+        {-1+.00,0,0, -2.00,0,0, 2.001,4},
         {-1,1-.00,0, -1,2.00,0, 0,5},
-        {-1,0,0, -3,0,0, 2.00,4},
+        {-1,0,0, -3,0,0, 2.001,4},
         {-1.0,-1,0, 0.0,-1,0, 0,5},
         {-1.00,-2,0, 0.00,-2,0, 0,5},
         {0,-1,0, 1,0,0, 0,5},
@@ -1856,7 +1936,7 @@ int main(){
         {1,1,0,0,1,0,0,5},
         {0,1,0,0,2,0,0,5},
         {0,2,0,1,1,0,0,5},
-        {0,-1,0,isr2,-1-isr2,0,(2-2*isr2)+0.00,4},
+        {0,-1,0,isr2,-1-isr2,0,(2-2*isr2)+0.001,4},
         {4,0,0, 4.1,0,0, 4,4},
         {4,1,0, 4,1.1,0, 4,4},
         };
@@ -1998,7 +2078,6 @@ int main(){
                 {x1*cos(++N*A),x1*sin(N*A),z1, x2*cos(N*A),x2*sin(N*A),z2, sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,0,10,0,0)},
                 {x1*cos(++N*A),x1*sin(N*A),z1, x2*cos(N*A),x2*sin(N*A),z2, sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,1,10,0,0)},
                 {x1*cos(++N*A),x1*sin(N*A),z1, x2*cos(N*A),x2*sin(N*A),z2, sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,2,4,0,0)},
-                //{0*++N,0,1, sinh(.5),0,cosh(0.5), sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,3,3,0,0)},
                 {x1*cos(++N*A),x1*sin(N*A),z1, x2*cos(N*A),x2*sin(N*A),z2, sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,3,3,0,0)},
                 {x1*cos(++N*A),x1*sin(N*A),z1, x2*cos(N*A),x2*sin(N*A),z2, sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,4,6,0,0)},
                 {x1*cos(++N*A),x1*sin(N*A),z1, x2*cos(N*A),x2*sin(N*A),z2, sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,4,7,0,0)},
@@ -2010,7 +2089,12 @@ int main(){
                 {x1*cos(++N*A),x1*sin(N*A),z1, x2*cos(N*A),x2*sin(N*A),z2, sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,19,1,0,0)},
                 {x1*cos(++N*A),x1*sin(N*A),z1, x2*cos(N*A),x2*sin(N*A),z2, sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,4,9,0,0)},
                 {x1*cos(++N*A),x1*sin(N*A),z1, x2*cos(N*A),x2*sin(N*A),z2, sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,21,0,0,0)},
-                {x1*cos(++N*A),x1*sin(N*A),z1, x2*cos(N*A),x2*sin(N*A),z2, sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,17,1,0,0)},
+                {x1*cos(++N*A),x1*sin(N*A),z1, x2*cos(N*A),x2*sin(N*A),z2, sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,23,0,0,0)},
+                {x1*cos(++N*A),x1*sin(N*A),z1, x2*cos(N*A),x2*sin(N*A),z2, sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,22,0,0,0)},
+                {x1*cos(++N*A),x1*sin(N*A),z1, x2*cos(N*A),x2*sin(N*A),z2, sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,24,0,0,0)},
+                {x1*cos(++N*A),x1*sin(N*A),z1, x2*cos(N*A),x2*sin(N*A),z2, sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,25,0,0,0)},
+                {x1*cos(++N*A),x1*sin(N*A),z1, x2*cos(N*A),x2*sin(N*A),z2, sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,26,0,0,0)},
+                {x1*cos(++N*A),x1*sin(N*A),z1, x2*cos(N*A),x2*sin(N*A),z2, sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,30,4,0,0)},
             };
             pawbuffer.push_back(world18);
             worldCurvatures.push_back(-1);
@@ -2027,18 +2111,6 @@ int main(){
         };
         pawbuffer.push_back(world20);
         worldCurvatures.push_back(-1);
-        /*std::vector<std::vector<float>> world21={
-            {0,6,0, 0,6.5,0, 2-2*cos(1.25),mkdest(0,18,14,0,0)},
-            {32.5/108,0,0, 135/108.0,0,0, 0,5},
-            {135/108.0,88/108.0,0, 135/108.0,135/108.0,0, 0,5},
-            {135/108.0,135/108.0,0, 0,135/108.0,0, 0,5},
-            {0,135/108.0,0, 0,32.5/108,0, 0,5},
-            //{0,32.5/108,0, 32.5/108,0,0, 0,5},
-            {135/108.0,0,0, (135+24)/108.0,0,0, 0,5},
-            {(135+24)/108.0,0,0, (135+24)/108.0,88/108.0,0, 0,5},
-            {(135+24)/108.0,88/108.0,0, (135)/108.0,88/108.0,0, 0,5},
-            //{135/108.0,88/108.0,0, 135/108.0,0,0, 0,5},
-        };//*/
         std::vector<std::vector<float>> world21={
             {-6,5.5,0, -6,6,0, 2-2*cos(1.25),mkdest(0,18,14,0,0)},
             {3,1.5,0, 3,.5,0, 0,mkdest(1,3,2,0,0)},
@@ -2119,8 +2191,322 @@ int main(){
         }
         pawbuffer.push_back(world21);
         worldCurvatures.push_back(0);
-        pw = 21;//player world
-        vec3(pl,0,0,0);//player location
+        std::vector<std::vector<float>> world22 = {
+            {0,-sinh(2.5),cosh(2.5), 0,-sinh(3),cosh(3), sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,18,16,0,0)},
+        };
+        for(int n = 0; n < world21.size(); n++){
+            if((int(world21[n][7])&7) == 5){
+                double m1[3][3], m2[3][3];
+                double p3[] = {world21[n][0]+.5,world21[n][1]+.5,0}, p4[] = {world21[n][3]+.5,world21[n][4]+.5,0}, p2[3] = {(p3[0]+p4[0])/2,(p3[1]+p4[1])/2,0};
+                double d,s,c;
+                double* p;
+                p = &p2[0];
+                d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                p[2] = d*d/2 + 1;
+                s = d/2*sqrt(d*d + 4)/d;
+                p[0] *= s;
+                p[1] *= s;
+                p = &p3[0];
+                d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                p[2] = d*d/2 + 1;
+                s = d/2*sqrt(d*d + 4)/d;
+                p[0] *= s;
+                p[1] *= s;
+                p = &p4[0];
+                d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                p[2] = d*d/2 + 1;
+                s = d/2*sqrt(d*d + 4)/d;
+                p[0] *= s;
+                p[1] *= s;
+                double p2c[3];
+                copypt(p2,p2c);
+                std::vector<float> wall = h2threepointstowall(p2c,p3,p4);
+                world22.push_back(wall);
+            }
+        }
+        pawbuffer.push_back(world22);
+        worldCurvatures.push_back(-1);
+        std::vector<std::vector<float>> world23 = {
+            {0,-sinh(2.5),cosh(2.5), 0,-sinh(3),cosh(3), sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,18,15,0,0)},
+        };
+        for(int n = 0; n < world21.size(); n++){
+            if((int(world21[n][7])&7) == 5){
+                double m1[3][3], m2[3][3];
+                double p3[] = {world21[n][0]+.5,world21[n][1]+.5,0}, p4[] = {world21[n][3]+.5,world21[n][4]+.5,0}, p2[3] = {(p3[0]+p4[0])/2,(p3[1]+p4[1])/2,0};
+                double d,s,c;
+                double* p;
+                p = &p2[0];
+                d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                p[2] = cosh(d);
+                s = sinh(d)/d;
+                p[0] *= s;
+                p[1] *= s;
+                p = &p3[0];
+                d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                p[2] = cosh(d);
+                s = sinh(d)/d;
+                p[0] *= s;
+                p[1] *= s;
+                p = &p4[0];
+                d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                p[2] = cosh(d);
+                s = sinh(d)/d;
+                p[0] *= s;
+                p[1] *= s;
+                double p2c[3];
+                copypt(p2,p2c);
+                std::vector<float> wall = h2threepointstowall(p2c,p3,p4);
+                world23.push_back(wall);
+            }
+        }
+        pawbuffer.push_back(world23);
+        worldCurvatures.push_back(-1);
+        std::vector<std::vector<float>> world24  = {
+            {0,-sinh(2.5),cosh(2.5), 0,-sinh(3),cosh(3), sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,18,17,0,0)},
+        };
+        for(int n = 0; n < world21.size(); n++){
+            double scale = 3;
+            if((int(world21[n][7])&7) == 5){
+                double m1[3][3], m2[3][3];
+                double p3[] = {world21[n][0]+0.75,world21[n][1]+.2,0}, p4[] = {world21[n][3]+0.75,world21[n][4]+.2,0}, p2[3] = {(p3[0]+p4[0])/2,(p3[1]+p4[1])/2,0};
+                double d,s,c;
+                double* p;
+                p = &p2[0];
+                d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                s = atanh(d/scale);
+                p[2] = cosh(s);
+                s = sinh(s)/d;
+                p[0] *= s;
+                p[1] *= s;
+                p = &p3[0];
+                d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                s = atanh(d/scale);
+                p[2] = cosh(s);
+                s = sinh(s)/d;
+                p[0] *= s;
+                p[1] *= s;
+                p = &p4[0];
+                d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                s = atanh(d/scale);
+                p[2] = cosh(s);
+                s = sinh(s)/d;
+                p[0] *= s;
+                p[1] *= s;
+                double p2c[3];
+                copypt(p2,p2c);
+                std::vector<float> wall = h2threepointstowall(p2c,p3,p4);
+                world24.push_back(wall);
+            }
+        }
+        pawbuffer.push_back(world24);
+        worldCurvatures.push_back(-1);
+        std::vector<std::vector<float>> world25 = {
+                {0,-sinh(2.5),cosh(2.5), 0,-sinh(3),cosh(3), sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,18,18,0,0)},
+        };
+        for(int n = 0; n < world21.size(); n++){
+            double scale = 3;
+            if((int(world21[n][7])&7) == 5){
+                double m1[3][3], m2[3][3];
+                double p3[] = {world21[n][0]+0.75,world21[n][1]+.2,0}, p4[] = {world21[n][3]+0.75,world21[n][4]+.2,0}, p2[3] = {(p3[0]+p4[0])/2,(p3[1]+p4[1])/2,0};
+                double d,s,c;
+                double* p;
+                p = &p2[0];
+                d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                s = 2*atanh(d/scale);
+                p[2] = cosh(s);
+                s = sinh(s)/d;
+                p[0] *= s;
+                p[1] *= s;
+                p = &p3[0];
+                d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                s = 2*atanh(d/scale);
+                p[2] = cosh(s);
+                s = sinh(s)/d;
+                p[0] *= s;
+                p[1] *= s;
+                p = &p4[0];
+                d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                s = 2*atanh(d/scale);
+                p[2] = cosh(s);
+                s = sinh(s)/d;
+                p[0] *= s;
+                p[1] *= s;
+                double p2c[3];
+                copypt(p2,p2c);
+                std::vector<float> wall = h2threepointstowall(p2c,p3,p4);
+                world25.push_back(wall);
+            }
+        }
+        pawbuffer.push_back(world25);
+        worldCurvatures.push_back(-1);
+        std::vector<std::vector<float>> world26;
+        {
+            double y1 = -sinh(2.5), z1 = cosh(2.5), y2 = y1, z2 = z1;
+            lorentz(y2,z2,cosh(.5),-sinh(.5));
+            world26 = {
+                {0,y1,z1, 0,y2,z2, sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,18,19,0,0)},
+            };
+        }
+        for(int n = 0; n < world21.size(); n++){
+            if((int(world21[n][7])&7) == 5){
+                double m1[3][3], m2[3][3];
+                double p3[] = {world21[n][0]+.35,world21[n][1]+.5,0}, p4[] = {world21[n][3]+.35,world21[n][4]+.5,0}, p2[3] = {(p3[0]+p4[0])/2,(p3[1]+p4[1])/2,0};
+                double d,s,c,a;
+                double* p;
+                p = &p2[0];
+                d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                s = sinh(d);
+                c = cosh(d);
+                a = arctan(p[0],p[1]);
+                if(a > pi) a -= 2*pi;
+                a = d*a/s;
+                p[0] = s*sin(a);
+                p[1] = s*cos(a);
+                p[2] = c;
+                p = &p3[0];
+                d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                s = sinh(d);
+                c = cosh(d);
+                a = arctan(p[0],p[1]);
+                if(a > pi) a -= 2*pi;
+                a = d*a/s;
+                p[0] = s*sin(a);
+                p[1] = s*cos(a);
+                p[2] = c;
+                p = &p4[0];
+                d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                s = sinh(d);
+                c = cosh(d);
+                a = arctan(p[0],p[1]);
+                if(a > pi) a -= 2*pi;
+                a = d*a/s;
+                p[0] = s*sin(a);
+                p[1] = s*cos(a);
+                p[2] = c;
+                double p2c[3];
+                copypt(p2,p2c);
+                std::vector<float> wall = h2threepointstowall(p2c,p3,p4);
+                world26.push_back(wall);
+            }
+        }
+        pawbuffer.push_back(world26);
+        worldCurvatures.push_back(-1);
+        std::vector<std::vector<float>> world27;
+        {
+            for(int n = 0; n < 7*0 + 1*world21.size(); n ++){
+                if((int(world21[n][7])&7) == 5){
+                    double p3[] = {world21[n][0]+0.75,world21[n][1]+.2,0}, p4[] = {world21[n][3]+0.75,world21[n][4]+.2,0}, p5[] = {(p3[0]+p4[0])/2,(p3[1]+p4[1])/2,0};
+                    double *p;
+                    double d;
+                    p = &p3[0];
+                    d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                    p[2] = cos(d);
+                    d = sin(d)/d;
+                    p[0] *= d; p[1] *= d;
+                    p = &p4[0];
+                    d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                    p[2] = cos(d);
+                    d = sin(d)/d;
+                    p[0] *= d; p[1] *= d;
+                    p = &p5[0];
+                    d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                    p[2] = cos(d);
+                    d = sin(d)/d;
+                    p[0] *= d; p[1] *= d;
+                    std::vector<float> wall = s2threepointstowall(p5,p3,p4);
+                    world27.push_back(wall);
+                }
+            }
+        }
+        pawbuffer.push_back(world27);
+        worldCurvatures.push_back(1);
+        std::vector<std::vector<float>> world28;
+        {
+            double scale = 1;
+            for(int n = 0; n < 7*0 + 1*world21.size(); n ++){
+                if((int(world21[n][7])&7) == 5){
+                    double p3[] = {world21[n][0]+0.75,world21[n][1]+1,0}, p4[] = {world21[n][3]+0.75,world21[n][4]+1,0}, p5[] = {(p3[0]+p4[0])/2,(p3[1]+p4[1])/2,0};
+                    double *p;
+                    double d;
+                    p = &p3[0];
+                    d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                    p[2] = cos(atan(scale*d));
+                    d = sin(atan(scale*d))/d;
+                    p[0] *= d; p[1] *= d;
+                    p = &p4[0];
+                    d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                    p[2] = cos(atan(scale*d));
+                    d = sin(atan(scale*d))/d;
+                    p[0] *= d; p[1] *= d;
+                    p = &p5[0];
+                    d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                    p[2] = cos(atan(scale*d));
+                    d = sin(atan(scale*d))/d;
+                    p[0] *= d; p[1] *= d;
+                    std::vector<float> wall = s2threepointstowall(p5,p3,p4);
+                    world28.push_back(wall);
+                }
+            }
+        }
+        pawbuffer.push_back(world28);
+        worldCurvatures.push_back(1);
+        std::vector<std::vector<float>> world29;
+        {
+            double scale = 1;
+            for(int n = 0; n < 7*0 + 1*world21.size(); n ++){
+                if((int(world21[n][7])&7) == 5){
+                    double p3[] = {world21[n][0]+0.4,world21[n][1]+.9,0}, p4[] = {world21[n][3]+0.4,world21[n][4]+.9,0}, p5[] = {(p3[0]+p4[0])/2,(p3[1]+p4[1])/2,0};
+                    double *p;
+                    double d;
+                    p = &p3[0];
+                    d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                    p[2] = cos(2*atan(d/scale));
+                    d = sin(2*atan(d/scale))/d;
+                    p[0] *= d; p[1] *= d;
+                    p = &p4[0];
+                    d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                    p[2] = cos(2*atan(d/scale));
+                    d = sin(2*atan(d/scale))/d;
+                    p[0] *= d; p[1] *= d;
+                    p = &p5[0];
+                    d = sqrt(p[0]*p[0] + p[1]*p[1]);
+                    p[2] = cos(2*atan(d/scale));
+                    d = sin(2*atan(d/scale))/d;
+                    p[0] *= d; p[1] *= d;
+                    std::vector<float> wall = s2threepointstowall(p5,p3,p4);
+                    world29.push_back(wall);
+                }
+            }
+        }
+        pawbuffer.push_back(world29);
+        worldCurvatures.push_back(1);
+        std::vector<std::vector<float>> world30;
+        {//psudosphere case c, with fun added
+            double d = 1.5, ds = sinh(d), dc = cosh(d), l = pi/ds, sl = sinh(l), lc = cosh(l);
+            double limit = dc*dc*lc - ds*ds;
+            double p1[3] = {dc*sl,ds,0}, p2[3] = {sinh(1.0/9), 0, cosh(1.0/9)};
+            p1[2] = sqrt(p1[0]*p1[0] + p1[1]*p1[1] + 1);
+            double iso[3][3];
+            h2matto(p1,iso);
+            double isoi[3][3];
+            h2invert(iso,isoi);
+            matxpt(isoi,p2);
+            std::vector<std::vector<float>> world30={
+                {lc,0,sl, sl,0,lc, dc,mkdest(2,30,2,0,0)},
+                {0,1.00,0, 0,ds,dc, limit,mkdest(2,30,3,0,1)},
+                {lc,0,-sl, -sl,0,lc, dc,mkdest(2,30,0,0,0)},
+                {0,1.00,0, 0,-ds,dc, limit,mkdest(2,30,1,0,1)},
+                {0,sinh(.7),cosh(.7), 0,sinh(0.2),cosh(0.2), sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,18,20,0,0)},
+                {p1[0],p1[1],p1[2], p2[0],p2[1],p2[2], inf,4},
+                {-p1[0],p1[1],p1[2], -p2[0],p2[1],p2[2], inf,4},
+                {p1[0],-p1[1],p1[2], p2[0],-p2[1],p2[2], inf,4},
+                {-p1[0],-p1[1],p1[2], -p2[0],-p2[1],p2[2], inf,4},
+            };
+            pawbuffer.push_back(world30);
+            worldCurvatures.push_back(-1);
+        }
+        pw = 30;//player world
+        vec3(pl,0,0,1);//player location
         //vec3(pl, -1/sqrt(3),-1/sqrt(3),-1/sqrt(3));
         vec3(pl2, pl[0],pl[1]+pr,0);//placing the default facing of the player
         vec3(camRef, pl[0]+1,pl[1],0);
@@ -2379,7 +2765,7 @@ int main(){
 
 
 
-    double LOG[120][3+3+1+1 + 3+1+1 +1+1];//pl,cref, pw,iopip, duppl,duppw,diopip, dx,dy
+    double LOG[120][3+3+1+1 + 3+1+1 +1+1];//pl,cref, pw,iopip, playerduploc,duppw,diopip, dx,dy
     int loge = 0;
     while(!glfwWindowShouldClose(window)){
         double deltaTime=glfwGetTime();
@@ -2413,19 +2799,41 @@ int main(){
                 pl[0] = LOG[loge][0]; pl[1] = LOG[loge][1]; pl[2] = LOG[loge][2];
                 camRef[0] = LOG[loge][3]; camRef[1] = LOG[loge][4]; camRef[2] = LOG[loge][5];
                 pw = LOG[loge][6]; iopip = LOG[loge][7];
-                duppl[0] = LOG[loge][8]; duppl[1] = LOG[loge][9]; duppl[2] = LOG[loge][10];
+                playerduploc[0] = LOG[loge][8]; playerduploc[1] = LOG[loge][9]; playerduploc[2] = LOG[loge][10];
                 duppw = LOG[loge][11];
                 diopip = LOG[loge][12];
             }
-            if(glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS) {
-                vec3(pl,0,0,0);
-                vec3(camRef,1,0,0);
-                pw=3;
-            }
+            /*if(glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS) {//with test stage
+                vec3(pl,0.4356526867844326967,  0.2435568025340280884,  0.8665372414041405680);
+                vec3(camRef,0.8999781773730995971,  -0.1346341949234345636, -0.4146237030053032124);
+                pw = 1;
+                iopip = 202;
+                vec3(playerduploc,0.2445038746919800110,  2.4373467901204493025,   0);
+                duppw = 0;
+                diopip = 6;
+                moveEntity(0.0170011930167675018,-0.0266319829970598221,pl,pl2,camRef,&pw,plp);
+            }*/
+            /*
+109
+0.4356526867844326967,  0.2435568025340280884,  0.8665372414041405680,  0.8999781773730995971,  -0.1346341949234345636, -0.4146237030053032124, 1.0000000000000000000,  202.0000000000000000000,        0.2445038746919800110,  2.4373467901204493025,   0.0000000000000000000,  0.0000000000000000000,  6.0000000000000000000,  0.0170011930167675018,  -0.0266319829970598221,
+108
+0.2415274290996713979,  2.4302800223329290574,  0.0000000000000000000,  -0.6427785377992303317, 1.9633721546470241925,  0.0000000000000000000,  0.0000000000000000000,  6.0000000000000000000,  0.4409559428575047790,  0.2475201024838381003,   0.8627233767797336528,  1.0000000000000000000,  202.0000000000000000000,        0.0170917380601167679,  -0.0257475115358829498,
+109
+0.4356526867844326967,  0.2435568025340280884,  0.8665372414041405680,  0.8999781773730995971,  -0.1346341949234345636, -0.4146237030053032124, 1.0000000000000000000,  202.0000000000000000000,        0.2445038746919800110,  2.4373467901204493025,   0.0000000000000000000,  0.0000000000000000000,  6.0000000000000000000,  0.0170011930167675018,  -0.0266319829970598221,
+110
+0.4356526867844326967,  0.2435568025340280884,  0.8665372414041405680,  0.8999781773730995971,  -0.1346341949234345636, -0.4146237030053032124, 0.0000000000000000000,  6.0000000000000000000,  0.2445038746919800110,  2.4373467901204493025,   0.0000000000000000000,  1.0000000000000000000,  202.0000000000000000000,        0.0170011930167675018,  -0.0276936125010251999,
+*/
 
 
             facingAngle[2]=0;
-            const float *axes = glfwGetJoystickAxes(GLFW_JOYSTICK_1, &axesCount);
+            int controllerNum = GLFW_JOYSTICK_1;
+            for(int jid = GLFW_JOYSTICK_1; jid <= GLFW_JOYSTICK_LAST; jid++){
+                if(glfwJoystickIsGamepad(jid)){
+                    controllerNum = jid;
+                    break;
+                }
+            }
+            const float *axes = glfwGetJoystickAxes(controllerNum, &axesCount);
             //for(int n = 0; n < axesCount; n++) printf("%f\t",axes[n]);
             //printf("\n");
             if(axesCount > 0){
@@ -2442,9 +2850,9 @@ int main(){
                 facingAngle[0] = axi[rsxi];
                 facingAngle[1] = -axi[rsyi];
                 if(abs(axi[rsxi]) > 0 || abs(axi[rsyi]) > 0) facingAngle[2] = 1;
-                const unsigned char* buttons = glfwGetJoystickButtons(GLFW_JOYSTICK_1, &buttonCount);
+                const unsigned char* buttons = glfwGetJoystickButtons(controllerNum, &buttonCount);
                 for(int n = 0; n < buttonCount; n++){
-                    if(buttons[n] == GLFW_PRESS) printf("BUTTON: %i\n",n);
+                    //if(buttons[n] == GLFW_PRESS) printf("BUTTON: %i\n",n);
                 }
                 if(buttons[9] == GLFW_PRESS) running = true;
             }
@@ -2512,7 +2920,7 @@ int main(){
                         backOnHyperboloid(pl2);
                     }
                     if(duppw >= 0 && dx == 0 && dy == 0){
-                        updateDuplicateRot(pl,pl2,duppl,duppl2,pw,iopip);
+                        updateDuplicateRot(pl,pl2,playerduploc,playerduploc2,pw,iopip);
                         //banaid V
                         //moveEntity(ped,0,pl,pl2,camRef,&pw,plp);
                         //moveEntity(-ped,0,pl,pl2,camRef,&pw,plp);
@@ -2526,26 +2934,49 @@ int main(){
                     dx *= 2;
                     dy *= 2;
                 }
-                //pl,cref, pw,iopip, duppl,duppw,diopip
+                //pl,cref, pw,iopip, playerduploc,duppw,diopip
                 loge++;if(loge >= 120) loge = 0;
                 LOG[loge][0] = pl[0];LOG[loge][1] = pl[1];LOG[loge][2] = pl[2];
                 LOG[loge][3] = camRef[0];LOG[loge][4] = camRef[1];LOG[loge][5] = camRef[2];
                 LOG[loge][6] = pw; LOG[loge][7] = iopip;
-                LOG[loge][8] = duppl[0]; LOG[loge][9] = duppl[1]; LOG[loge][10] = duppl[2];
+                LOG[loge][8] = playerduploc[0]; LOG[loge][9] = playerduploc[1]; LOG[loge][10] = playerduploc[2];
                 LOG[loge][11] = duppw;
                 LOG[loge][12] = diopip;
                 LOG[loge][13] = dx; LOG[loge][14] = dy;
                 //MOVE
+                double ogpl[3], ogpl2[3], ogcam[3], ogplayerduploc[3], ogplayerduploc2[3];
+                copypt(pl,ogpl);
+                copypt(pl2,ogpl2);
+                copypt(camRef,ogcam);
+                copypt(playerduploc,ogplayerduploc);
+                copypt(playerduploc2,ogplayerduploc2);
+                int ogpw = pw, ogduppw = duppw, ogdiopip = diopip, ogiopip = iopip;
                 double displacement = sqrt(dx*dx + dy*dy);
                 int steps = ceil(displacement/pr);
                 dx /= steps; dy /= steps;
                 while(steps > 0){
-                    moveEntity(dx,dy,pl,pl2,camRef,&pw,plp);
-                    steps--;
-                }
+                    bool abortMove = false;
+                    moveEntity(dx,dy,pl,pl2,camRef,&pw,plp,abortMove);
+                    if(abortMove) steps = 0;
+                    else steps--;
+                }//*/
+                //if( (pw == ogpw && disSquared(pl,ogpl) > 0.00008) || (pw == ogduppw && disSquared(pl,ogplayerduploc) > 0.00008)){
+                //    if(pw == ogpw) printf("%lf\n",disSquared(pl,ogpl));
+                //    else printf("%lf\n",disSquared(pl,ogplayerduploc));
+                //}
+                if( (pw == ogpw && disSquared(pl,ogpl) < 0.00008) || (pw == ogduppw && disSquared(pl,ogplayerduploc) < 0.00008)){
+                    copypt(ogpl,pl);
+                    copypt(ogpl2,pl2);
+                    copypt(ogcam,camRef);
+                    copypt(ogplayerduploc,playerduploc);
+                    copypt(ogplayerduploc2,playerduploc2);
+                    pw = ogpw, duppw = ogduppw, diopip = ogdiopip, iopip = ogiopip;
+                }//*/
+
+                //moveEntity(dx,dy,pl,pl2,camRef,&pw,plp);
                 //printP(pl);
                 //printP(camRef);
-                //printP(duppl);
+                //printP(playerduploc);
                 //printf("%i\t%i\n",pw,duppw);
             }
             if(glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && zoom<1) zoom+=pow(2,floor(log2(zoom)-4));
@@ -2606,11 +3037,11 @@ int main(){
         copypt(facingAngle,playerFacing);
         glUniform2fv(glGetUniformLocation(shaderProgram,"playerFacing"),1,&playerFacing[0]);
         float duplicatePlayerLocation[3];
-        copypt(duppl,duplicatePlayerLocation);
-        glUniform3fv(glGetUniformLocation(shaderProgram,"duppl"),1,&duplicatePlayerLocation[0]);
+        copypt(playerduploc,duplicatePlayerLocation);
+        glUniform3fv(glGetUniformLocation(shaderProgram,"playerduploc"),1,&duplicatePlayerLocation[0]);
         float duplicatePlayerLocation2[3];
-        copypt(duppl2,duplicatePlayerLocation2);
-        glUniform3fv(glGetUniformLocation(shaderProgram,"duppl2"),1,&duplicatePlayerLocation2[0]);
+        copypt(playerduploc2,duplicatePlayerLocation2);
+        glUniform3fv(glGetUniformLocation(shaderProgram,"playerduploc2"),1,&duplicatePlayerLocation2[0]);
         glUniform1f(glGetUniformLocation(shaderProgram, "mirrorPlayer"),plp[0]);
         glUniform1f(glGetUniformLocation(shaderProgram, "mirrorDup"),mirrorDup);
         glUniform1f(glGetUniformLocation(shaderProgram, "zoom"),zoom);
