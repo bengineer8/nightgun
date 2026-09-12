@@ -247,14 +247,22 @@ void main(){
                     float al=positions[i+6];//angle limit, not an angle.
                     p1=rot*(p1)+off;p2=rot*(p2)+off;
                     if(!(sourceIndex == i && ignoreNextSelf)){
-                        if(type == 0 && abs(p1.y)<t&&(p2.y*p2.y<=al*t*t || al==4)){
-                            float o=sqrt(t*t-p1.y*p1.y), xt=p1.x-o, xt1=xt;
-                            if(((al==4) || ((xt-p2.x)*(xt-p2.x)+p2.y*p2.y<al*t*t)) && xt>0 && xt<cid && (i != sourceIndex)) {//1st collision is not allowed if portal is the source
-                                cip1=p1;cip2=p2;cii=i;cid=xt;
+                        if(type == 0){
+                            float o = sqrt(t*t - p1.y*p1.y);
+                            if(abs(p1.y)<= t && (p2.y*p2.y <= al*t*t || al==4)){
+                                float xt = p1.x - o, xt1 = xt;
+                                if(((al==4) || ((xt-p2.x)*(xt-p2.x)+p2.y*p2.y<al*t*t)) && xt>=0 && xt<cid && (i != sourceIndex)) {//1st collision is not allowed if portal is the source
+                                    cip1 = p1; cip2 = p2; cii=i; cid = xt;
+                                }
+                                xt = p1.x + o;
+                                if(((al==4) || ((xt-p2.x)*(xt-p2.x)+p2.y*p2.y<al*t*t)) && xt>=0 && xt<cid && (i != sourceIndex||abs(xt1)<xt)) {//2nd clollision is only allowed with oneself if the 1st collsion would be the starting point
+                                    cip1 = p1; cip2 = p2; cii=i; cid = xt;
+                                }
                             }
-                            xt=p1.x+o;
-                            if(((al==4) || ((xt-p2.x)*(xt-p2.x)+p2.y*p2.y<al*t*t)) && xt>0 && xt<cid && (i != sourceIndex||abs(xt1)<xt)) {//2nd clollision is only allowed with oneself if the 1st collsion would be the starting point
-                                cip1=p1;cip2=p2;cii=i;cid=xt;
+                            if(!(o == o && o != 0) && i == sourceIndex && previousPreviousPortal != i){//Forcing things when a rouding error is detected
+                                cid = 0;
+                                cip1 = p1; cip2 = p2; cii = i;
+                                ignoreNextSelf = true;
                             }
                         }
                         if(type == 1 && i != sourceIndex && p1.y*p2.y<=0 && (p1.x>0 || p2.x>0) ){
@@ -263,7 +271,7 @@ void main(){
                                 cip1=p1;cip2=p2;cii=i;cid=xt;
                             }
                         }
-                    } else ignoreNextSelf = false;
+                    } else if(sourceIndex == i) ignoreNextSelf = false;
                     i += sizeOfpow;
                 }
                 if(cii>-1) {
@@ -422,7 +430,7 @@ void main(){
                     p1=rot*p1;
                     p2=rot*p2;
                     if(!(sourceIndex == i && ignoreNextSelf)){
-                        if(p1.y*p1.y < rs){
+                        if(p1.y*p1.y <= rs){
                             vec3 cipp, cipm;//closest intersection point plus and minus
                             float s = sqrt(rs - p1.y*p1.y), D = 1/(1-p1.y*p1.y);
                             cipp = vec3(p1.x*rc+p1.z*s,0,p1.z*rc-p1.x*s)*D;
@@ -431,24 +439,29 @@ void main(){
                             float ala = 1 + rs*al;
                             float disrank;
                             disrank=s2disrank(cipp.z,cipp.x);
-                            if(s != 0 && i == sourceIndex) dcolor.y = 1;
-                            if( (al==-2 || dot(cipp,p2)>ala ) && disrank<cidr && (sourceIndex != i || cipm.z>cipp.z)){//either not the source portal or the other point is closer
-                                cii=i;
-                                cip=cipp;
-                                cidr=disrank;
+                            if( (al==-2 || dot(cipp,p2)>ala ) && disrank<cidr && (sourceIndex != i || cipm.z > cipp.z)){//either not the source portal or the other point is closer
+                                cii = i;
+                                cip = cipp;
+                                cidr = disrank;
                             }
                             disrank=s2disrank(cipm.z,cipm.x);
-                            if( (al==-2 || dot(cipm,p2)>ala ) && disrank<cidr && (sourceIndex != i || cipp.z>cipm.z)){//either not the source portal or the other point is closer
-                                cii=i;
-                                cip=cipm;
-                                cidr=disrank;
+                            if( (al==-2 || dot(cipm,p2)>ala ) && disrank<cidr && (sourceIndex != i || cipp.z > cipm.z)){//either not the source portal or the other point is closer
+                                cii = i;
+                                cip = cipm;
+                                cidr = disrank;
+                            }
+                            if(!(s == s && cipm.z != cipp.z) && i == sourceIndex && previousPreviousPortal != i){//Forcing things when a rouding error or knife edge is detected
+                                cii = i;
+                                cip = vec3(0,0,1);
+                                cidr = 0;
+                                ignoreNextSelf = true;
                             }
                             if(cii == i){
                                 cip1=p1;
                                 cip2=p2;
                             }
                         }
-                    } else ignoreNextSelf = false;
+                    } else if(sourceIndex == i) ignoreNextSelf = false;
                     i += sizeOfpow;
                 }
                 if(wraparound && cii < 0){
@@ -562,7 +575,7 @@ void main(){
                     cipR.y = 0; cipL.y = 0;
                     cipR.x = (1/tR - tR)*0.5; cipR.z = cipR.x + tR;
                     cipL.x = (1/tL - tL)*0.5; cipL.z = cipL.x + tL;
-                    bool risvalid = tR > 0 && limit > lidot(p2,cipR), lisvalid = tL > 0 && limit > lidot(p2,cipL);
+                    bool risvalid = tR >= 0 && limit > lidot(p2,cipR), lisvalid = tL >= 0 && limit > lidot(p2,cipL);
                     if(!(sourceIndex == i && ignoreNextSelf)){
                         if(risvalid && 0 < cipR.x && cipR.x < cip.x && (i != sourceIndex || (lisvalid && cipL.z < cipR.z) ) ){
                             cip = cipR;
@@ -582,7 +595,7 @@ void main(){
                             cip1 = p1;
                             cip2 = p2;
                         }
-                    } else ignoreNextSelf = false;
+                    } else if(i == sourceIndex) ignoreNextSelf = false;
                     i += sizeOfpow;
                 }//*/
                 if(cii > 0){
@@ -653,6 +666,7 @@ void main(){
             int nearstWallIndex = -1;
             float a = wallcornershad*wallcornershad;
             if(iaunit == 0){
+                dcolor.x = 1;
                 vec2 closestPoint, closestClosestPoint;
                 float nwdis2 = wallcornershad*wallcornershad;
                 while(i < positions[current_world + 1]){
@@ -753,7 +767,6 @@ void main(){
                 //...
             }
             if(iaunit > 0){
-                dcolor.z = 1;
                     vec3 closestPoint, closestClosestPoint;
                     float codtccp = coswallcornershad;//cos of distance to closest closest point, I am not typing that all out outside of this comment
                     while(i < positions[current_world + 1]){
@@ -810,7 +823,7 @@ void main(){
                 }
             }
             if(iaunit < 0){
-                dcolor.x = 1;
+                dcolor.z = 1;
                 vec2 V = vec2(endOfRay.x,endOfRay.y)/(endOfRay.z + 1);
                 //^hyperboloid to poincare disk
                 V = vec2(2*V.x, 1 - V.y*V.y - V.x*V.x)/( (1 - V.y)*(1 - V.y) + V.x*V.x);
@@ -932,7 +945,6 @@ void main(){
                 */
             }
         }
-        if(iterations == maxits) FragColor = bgcolor;
         if(iterations<1) FragColor=vec4(0,0,1,1);//banadaid
         if(od < pr){
             //...
@@ -941,6 +953,7 @@ void main(){
             //if(iterations > 5) dcolor.y=1;
             FragColor = dcolor;
         }
+        if(iterations == maxits) FragColor = bgcolor;
     } else {//outside the view area
         FragColor = bgcolor;//8
         if(screenPos.y < min(-.6,abs(screenPos.x)-sqrt(2)) && abs(screenPos.x) > 0.6) FragColor = vec4(0.66,0.66,0.66,1);
