@@ -2073,7 +2073,7 @@ int main(){
             copypt(p2,p22);
             lorentz(p1[0],p1[2],cosh(1),sinh(1));
             lorentz(p2[0],p2[2],cosh(1),sinh(1));
-            std::vector<std::vector<float>> world16={//BUG
+            std::vector<std::vector<float>> world16={
                 {x1,0,z1, z1,0,x1, l1,0 + 1*mkdest(2,16,1,0,0)},
                 {x1,0,-z1, -z1,0,x1, l1,0 + 1*mkdest(2,16,0,0,0)},
                 {p1[0],-p1[1],p1[2], p2[0],-p2[1],p2[2], sinh(.5)*sinh(.5)*(1 - cos(1.25)) + 1,mkdest(0,14,2,0,0)},
