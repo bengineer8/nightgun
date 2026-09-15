@@ -2,6 +2,6 @@
 840     default width
 480     default height
 1       window scale
-60      FPS, not fully working ATM due to multithreading being a WIP?
+60      FPS, not fully working ATM due to multithreading being a WIP
 
 This thing is highly experimental.
