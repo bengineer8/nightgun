@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <thread>
 
 //#include <windows.h>
 
@@ -36,6 +37,7 @@ std::vector<float> worldCurvatures;
 float shader_data[positionsSize];
 float worldCurvs[128];//to do: make this all done in 1 batch later
 
+const double tickRate = 60;
 const float pi=3.14159265359, sr2=sqrt(2), isr2=sr2/2,ps = 0.043,pr=1.0/9.0, ped=1.0/1000, inf = 1/0.0;//player speed. player radius, portal ejection distance
 const double playerWallCollisionr = 1.0/36 + pr;
 const double cosplayerWallCollisionr = cos(playerWallCollisionr);
@@ -384,6 +386,19 @@ void licross(double p1[3], double p2[3], double p3[3]){
     vec3(p3, p1[1]*p2[2] - p1[2]*p2[1], p1[2]*p2[0] - p1[0]*p2[2], p1[1]*p2[0] - p1[0]*p2[1]);
 }
 
+double disSquaredAprox(double a[], double b[], double iaunit){
+    double d2;
+    if(iaunit == 0){
+        double c[3] = {a[0] - b[0], a[1] - b[1], a[2] - b[2]};
+        d2 = c[0]*c[0] + c[1]*c[1] + c[2]*c[2];
+    } else if(iaunit > 0){
+        d2 = 2 - 2*dot(a,b);
+    } else if(iaunit < 0) {
+        d2 = 2*lidot(a,b) - 2;
+    }
+    return d2;
+}
+
 bool h2PortalBetween(double A[3], double B[3], int i){
     if(i > 0){
         double p1[3] = {paw[i], paw[i + 1], paw[i + 2]}, p2[3] = {paw[i + 3], paw[i + 4], paw[i + 5]};
@@ -470,7 +485,7 @@ std::vector<float> h2threepointstowall(double p2[], double p3[], double p4[]){
     return wall;
 }
 
-void addExtraToPOW2(std::vector<float>& G, float iaunit){
+void addExtraToPOW(std::vector<float>& G, float iaunit){
     double p1[3] = {G[0],G[1],G[2]}, p2[3] = {G[3],G[4],G[5]};
     double L = G[6];
     int dat = (int)G[7];
@@ -558,7 +573,6 @@ void addExtraToPOW2(std::vector<float>& G, float iaunit){
             G.push_back(endpt2[0]);
             G.push_back(endpt2[1]);
             G.push_back(endpt2[2]);
-            //...
         } else {
             for(int n = 8; n < 14; n++) G.push_back(0);//placeholder
             //...
@@ -676,7 +690,7 @@ void updateDuplicateRot(double pos[], double pos2[], double dpos[], double dpos2
     p1[0] /= p1[2]; p1[1] /= p1[2];
     rotate(pos2r[0],pos2r[1],p1[0],-p1[1]);
     if(mirror == 1) pos2r[1] = -pos2r[1];
-    if(side == 1){
+    if(side == 1 && type == 0){
         pos2r[1] = -pos2r[1];
         pos2r[0] = -pos2r[0];
     }
@@ -862,7 +876,7 @@ void createDuplicate(double RL[], double RD, double p[], int ipi, int& w, double
     }
 }
 
-void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[], int& cw, float props[],bool& abortMove){
+void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[], int& cw, float props[], int& intersectingPortalIndex, bool& abortMove){
     int maxits = 9;
     bool bounce = 0;//temp name, disables wall colliders and portal dupe creation because they use the same code. Makes you bounce off walls because that is what they do as a failsafe for if you go too fast to get past their colliders.
     //printf("dx:%.19lf \t dy:%.19lf \t pos:%.19f, %.19f, %.19f \t cam:%.19f, %.19f, %.19f \t cw:%i\n", dx, dy, pos[0], pos[1], pos[2], ref[0], ref[1], ref[2], cw);
@@ -875,13 +889,13 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
     copypt(ref,ogref);
     int ogcw = cw;
     float ogprop0 = props[0];
-    int ogiopip = iopip;
-    int ogduppw = duppw;
+    int ogintersectingPortalIndex = ogintersectingPortalIndex;
+    int ogduppw = duppw;//TODO make entity specific
     int ogdiopip = diopip;
     copypt(playerduploc,ogplayerduploc);
     copypt(playerduploc2,ogplayerduploc2);
     duppw = -1;//temporary hard coding, make it only do this for the entity specific duplicat later
-    iopip = -1;
+    intersectingPortalIndex = -1;
     diopip = -1;
     char reflect=0;//temporary
     char type = 0,mirror=1,side=0;
@@ -1116,7 +1130,7 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
                                     double pos2c[2] = {pos2[0] - pos[0], pos2[1] - pos[1]};
                                     double pos2r[3] = {-(pos2c[0]*cp[0] + pos2c[1]*cp[1])/pr/RL[2], (pos2c[0]*cp[1] - pos2c[1]*cp[0])/pr/RL[2], pr};
                                     createDuplicate(RL,RL[2],pos2r,i,duppw,playerduploc,playerduploc2);
-                                    iopip=i;//make this entity specific later
+                                    intersectingPortalIndex = i;
                                 }
                             } else inportal = 0;
                             if(inwall){
@@ -1356,7 +1370,7 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
                             relLoc[1] = safe_sqrt(1 - relLoc[0]*relLoc[0])*s2side(ip1,ip2,closestpt);
                             relLoc[2] *= acos(cosODis);
                             createDuplicate(relLoc,relLoc[2],temppos2r,indexOfIntersection,duppw,playerduploc,playerduploc2);
-                            iopip = indexOfIntersection;//make this entity specific later
+                            intersectingPortalIndex = indexOfIntersection;
                         }
                         if(inwall > 0){
                             //printf("w\n");
@@ -1614,7 +1628,7 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
                                         relLoc[1] = sL;
                                         relLoc[2] *= acosh(coshdis);
                                         createDuplicate(relLoc,relLoc[2],temppos2r,i,duppw,playerduploc,playerduploc2);
-                                        iopip = i;//TODO make this entity specific later
+                                        intersectingPortalIndex = i;
                                 } else {
                                     inwall = true;
                                 }
@@ -1655,16 +1669,6 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
         }//end of h2*/
     }
     if(iterations >= maxits){
-        cw = ogcw;
-        copypt(ogpos,pos);
-        copypt(ogpos2,pos2);
-        copypt(ogref,ref);
-        props[0] = ogprop0;
-        int iopip = ogiopip;
-        int diopip = ogdiopip;
-        int duppw = ogduppw;
-        copypt(ogplayerduploc,playerduploc);
-        copypt(ogplayerduploc2,playerduploc2);
         abortMove = true;
     }
 
@@ -1703,6 +1707,27 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
     glViewport(0, 0, width, height);
 }
+
+/*void renderFrame(int windowres, int windowScale, int height, int width, float zoom, unsigned int shaderProgram, unsigned int framestage1, unsigned int framebuffer1, unsigned int postprocessfull, GLFWwindow* window, double T){
+    glfwMakeContextCurrent(window);
+    printf("1\n");
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    printf("0\n");
+            //
+            //2nd pass
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glUseProgram(postprocessfull);
+            glUniform1i(glGetUniformLocation(postprocessfull, "height"),height);
+            glUniform1i(glGetUniformLocation(postprocessfull, "width"),width);
+            glUniform1i(glGetUniformLocation(postprocessfull, "windowScale"),windowScale);
+            glUniform1f(glGetUniformLocation(postprocessfull, "zoom"),zoom);
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+
+            // check and call events and swap the buffers
+            glfwSwapBuffers(window);
+    glUseProgram(shaderProgram);
+    //....
+}//*/
 
 int main(){
     //taking in account that the right stick is mapped differently on Windows than on Linux
@@ -1985,7 +2010,7 @@ int main(){
         {1,0,0, isr2,-isr2,0, cos(pi/8)-1,mkdest(0,9,1,1,0)},
         {1,0,0, isr2,0,-isr2, cos(pi/8)-1,mkdest(0,9,4,0,0)},
         {0,0,1, isr2,0,isr2, cos(pi/8)-1,mkdest(0,9,3,0,0)},
-        {-0.577350269,-0.577350269,-0.577350269, -0.430918160,-0.430918160,-0.792855017, -2,mkdest(0,10,0,1,0)},
+        {-0.577350269,-0.577350269,-0.577350269, -0.430918160,-0.430918160,-0.792855017, -2,mkdest(0,10,0,0,0)},
         //{-0.577350269,-0.577350269,-0.577350269, -0.672209398,-0.672209398,-0.310272541, -1.01,4},
         {-0.506819707,-0.831013078,0.229239331, -0.628517767,0.538215910,0.561506043, -0.019588431,4},
         {0.5,0.5,0.707106781, 0.547418791,0.547418791,0.632981307, -2,4},
@@ -1995,7 +2020,7 @@ int main(){
         pawbuffer.push_back(world9);
         worldCurvatures.push_back(1);
         std::vector<std::vector<float>> world10={
-        {-0.577350269,-0.577350269,-0.577350269, -0.430918160,-0.430918160,-0.792855017, -2,mkdest(0,9,5,1,0)},
+        {0.577350269,0.577350269,0.577350269, -0.430918160,-0.430918160,-0.792855017, -2,mkdest(0,9,5,0,0)},
         {1,0,0, 0,0,1, -0.02,mkdest(0,11,0,0,0)},
         };
         pawbuffer.push_back(world10);
@@ -2502,6 +2527,12 @@ int main(){
             pawbuffer.push_back(world30);
             worldCurvatures.push_back(-1);
         }
+        std::vector<std::vector<float>> world31 = {
+            {1,0,1, sinh(2),0,cosh(2), 4,mkdest(1,31,1,1,0)},
+            {1,0,1, -sinh(2),0,cosh(2), 4,mkdest(1,31,0,1,0)},
+        };
+        pawbuffer.push_back(world31);
+        worldCurvatures.push_back(-1);
         pw = 21;//player world
         vec3(pl,0,0,0);//player location
         //vec3(pl, -1/sqrt(3),-1/sqrt(3),-1/sqrt(3));
@@ -2509,8 +2540,6 @@ int main(){
         vec3(camRef, pl[0]+1,pl[1],0);
         plp[0] = 1;//setting this to negative 1 mirrors
         duppw = -1;//signals that the player isn't in a portal
-        //vec3(pl,-4.892296924,   -3.701677522,   6.215865641);
-        //vec3(camRef,-4.172076095,   -4.279651359,   6.059837844);
     }//*/
 
 
@@ -2585,7 +2614,7 @@ int main(){
     for(int w=0;w<pawbuffer.size();w++){
         paw[w+1]=paw[w]+pawbuffer[w].size()*sizeOfPow;
         for(int i=0;i<pawbuffer[w].size();i++){
-            if(pawbuffer[w][i].size() < 14) addExtraToPOW2(pawbuffer[w][i], worldCurvatures[w]);
+            if(pawbuffer[w][i].size() < 14) addExtraToPOW(pawbuffer[w][i], worldCurvatures[w]);
             for(int p=0;p<sizeOfPow;p++){
                     paw[(int)paw[w]+sizeOfPow*i+p]=pawbuffer[w][i][p];
             }
@@ -2609,6 +2638,32 @@ int main(){
 
 //msiiiiiiiiiiwwwwwwwwwttt
 //321098765432109876543210
+
+
+    int defaultController;
+    int defaultWidth;
+    int defaultHeight;
+    int windowScale;
+    double framesPerTick;
+    {
+        std::ifstream f("config.txt");
+        if (!f.is_open()) {
+            printf("ERROR:config.txt wasn't able to be openned\n");
+            return 1;
+        }
+        std::string s;
+        std::getline(f, s);
+        defaultController = stoi(s.substr(0,s.find(" ")));
+        std::getline(f, s);
+        defaultWidth = stoi(s.substr(0,s.find(" ")));
+        std::getline(f, s);
+        defaultHeight = stoi(s.substr(0,s.find(" ")));
+        std::getline(f, s);
+        windowScale = stoi(s.substr(0,s.find(" ")));
+        std::getline(f, s);
+        framesPerTick = stoi(s.substr(0,s.find(" ")))/tickRate;
+        f.close();
+    }
 
 
     std::string shad="";
@@ -2640,14 +2695,14 @@ int main(){
     char *fragmentShaderSource = &(shad[0]);
     char *postprocesscharpointer = &(postprocessString[0]);
 
-    int width, height;
+    int width, height, windowres = std::min(defaultWidth,defaultHeight);;
 
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     //glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-    GLFWwindow* window = glfwCreateWindow(840, 480, "NightGun", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(defaultWidth, defaultHeight, "NightGun", NULL, NULL);
     if (window == NULL)
     {
         std::cout << "Failed to create GLFW window" << std::endl;
@@ -2660,7 +2715,7 @@ int main(){
         std::cout << "Failed to initialize GLAD" << std::endl;
         return -1;
     }
-    glViewport(0, 0, 840, 480);
+    glViewport(0, 0, defaultWidth, defaultHeight);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     float vertices[] = {
         1.0f, 1.0f, 0.0f,
@@ -2754,10 +2809,10 @@ int main(){
     glGenFramebuffers(1, &framebuffer1);
     glBindTexture(GL_TEXTURE_2D, framestage1);
     glUseProgram(shaderProgram);
-    float zoom=1;
-    int64_t frameCount=0;
+    float zoom = 1;
+    int64_t frameCount = 0;
+    double frameacum = 1;
     float dx=0,dy=0;
-    char oneshot=0;
     float facingAngle[5]={0,0,0,1,0};//3rd one is just working space
 
 
@@ -2766,7 +2821,7 @@ int main(){
     int loge = 0;
     while(!glfwWindowShouldClose(window)){
         double deltaTime=glfwGetTime();
-        double NFT = deltaTime+1.0/60.0;//next frame time
+        double NFT = deltaTime+1/tickRate;//next frame time TODO: rename this next tick time
 
         // input
         //x:-0.0024175168946385384        dy:-0.0000000000000000000       pos:-0.7051436801807300370, 0.7006944950205539202, 0.1086260325569532031        cam:0.6988327265491615092, 0.6608337933806174291, 0.2737362194340526300         cw:12
@@ -2810,20 +2865,10 @@ int main(){
                 diopip = 6;
                 moveEntity(0.0170011930167675018,-0.0266319829970598221,pl,pl2,camRef,&pw,plp);
             }*/
-            /*
-109
-0.4356526867844326967,  0.2435568025340280884,  0.8665372414041405680,  0.8999781773730995971,  -0.1346341949234345636, -0.4146237030053032124, 1.0000000000000000000,  202.0000000000000000000,        0.2445038746919800110,  2.4373467901204493025,   0.0000000000000000000,  0.0000000000000000000,  6.0000000000000000000,  0.0170011930167675018,  -0.0266319829970598221,
-108
-0.2415274290996713979,  2.4302800223329290574,  0.0000000000000000000,  -0.6427785377992303317, 1.9633721546470241925,  0.0000000000000000000,  0.0000000000000000000,  6.0000000000000000000,  0.4409559428575047790,  0.2475201024838381003,   0.8627233767797336528,  1.0000000000000000000,  202.0000000000000000000,        0.0170917380601167679,  -0.0257475115358829498,
-109
-0.4356526867844326967,  0.2435568025340280884,  0.8665372414041405680,  0.8999781773730995971,  -0.1346341949234345636, -0.4146237030053032124, 1.0000000000000000000,  202.0000000000000000000,        0.2445038746919800110,  2.4373467901204493025,   0.0000000000000000000,  0.0000000000000000000,  6.0000000000000000000,  0.0170011930167675018,  -0.0266319829970598221,
-110
-0.4356526867844326967,  0.2435568025340280884,  0.8665372414041405680,  0.8999781773730995971,  -0.1346341949234345636, -0.4146237030053032124, 0.0000000000000000000,  6.0000000000000000000,  0.2445038746919800110,  2.4373467901204493025,   0.0000000000000000000,  1.0000000000000000000,  202.0000000000000000000,        0.0170011930167675018,  -0.0276936125010251999,
-*/
 
 
-            facingAngle[2]=0;
-            int controllerNum = GLFW_JOYSTICK_1;
+            facingAngle[2] = 0;
+            int controllerNum = GLFW_JOYSTICK_1+defaultController;
             for(int jid = GLFW_JOYSTICK_1; jid <= GLFW_JOYSTICK_LAST; jid++){
                 if(glfwJoystickIsGamepad(jid)){
                     controllerNum = jid;
@@ -2916,15 +2961,10 @@ int main(){
                         matxpt(roti,pl2);
                         backOnHyperboloid(pl2);
                     }
-                    if(duppw >= 0 && dx == 0 && dy == 0){
-                        updateDuplicateRot(pl,pl2,playerduploc,playerduploc2,pw,iopip);
-                        //banaid V
-                        //moveEntity(ped,0,pl,pl2,camRef,&pw,plp);
-                        //moveEntity(-ped,0,pl,pl2,camRef,&pw,plp);
-                    }
                 }
-                facingAngle[2]=0;
             }
+
+            bool playerMoved = true;
             if(dy!=0||dx!=0) {
                 //movePlayer(dx,dy,0);
                 if(running){
@@ -2941,6 +2981,7 @@ int main(){
                 LOG[loge][12] = diopip;
                 LOG[loge][13] = dx; LOG[loge][14] = dy;
                 //MOVE
+                float plp0 = plp[0];
                 double ogpl[3], ogpl2[3], ogcam[3], ogplayerduploc[3], ogplayerduploc2[3];
                 copypt(pl,ogpl);
                 copypt(pl2,ogpl2);
@@ -2951,119 +2992,131 @@ int main(){
                 double displacement = sqrt(dx*dx + dy*dy);
                 int steps = ceil(displacement/pr);
                 dx /= steps; dy /= steps;
+                bool abortMove = false;
                 while(steps > 0){
-                    bool abortMove = false;
-                    moveEntity(dx,dy,pl,pl2,camRef,pw,plp,abortMove);
+                    moveEntity(dx,dy,pl,pl2,camRef,pw,plp,iopip,abortMove);
                     if(abortMove) steps = 0;
                     else steps--;
                 }
-                if( (pw == ogpw && disSquared(pl,ogpl) < 0.00008) || (pw == ogduppw && disSquared(pl,ogplayerduploc) < 0.00008)){
+                if( abortMove || (((pw == ogpw && disSquaredAprox(pl,ogpl,worldCurvatures[pw]) < 0.00008) || (pw == ogduppw && disSquaredAprox(pl,ogplayerduploc,worldCurvatures[pw]) < 0.00008) ) && (iopip != diopip || diopip == -1))){
+                    plp[0] = plp0;
                     copypt(ogpl,pl);
                     copypt(ogpl2,pl2);
                     copypt(ogcam,camRef);
                     copypt(ogplayerduploc,playerduploc);
                     copypt(ogplayerduploc2,playerduploc2);
                     pw = ogpw, duppw = ogduppw, diopip = ogdiopip, iopip = ogiopip;
+                    playerMoved = false;
                 }//*/
                 //printP(pl);
                 //printP(camRef);
                 //printP(playerduploc);
                 //printf("%i\t%i\n",pw,duppw);
+            } else playerMoved = false;
+
+            if(!playerMoved && duppw >= 0 && facingAngle[2] > 0){
+                updateDuplicateRot(pl,pl2,playerduploc,playerduploc2,pw,iopip);
             }
+            facingAngle[2] = 0;
+
             if(glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && zoom<1) zoom+=pow(2,floor(log2(zoom)-4));
             if(glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS && zoom>pr/pi) zoom-=pow(2,floor(log2(zoom)-4));
         }
 
 
 
+        //Draw
         int widthp=width, heightp=height;
         glfwGetFramebufferSize(window, &width, &height);
         if(width!=widthp||height!=heightp) {
-            glUniform1i(glGetUniformLocation(shaderProgram, "res"),std::min(width,height));
+            windowres = std::min(width,height);
             printf("window dim:\n%i\tx\t%i\n",width,height);
             /*for(int n=0;n<paw[(int)paw[0]-1];n++) {
                 if((int)paw[n]==paw[n]) printf("%i\t%i\n",n,(int)paw[n]);
                 else printf("%i\t%f\n",n,paw[n]);
             }//*/
         }
+
+        float T=1+sin(17.2787595947*glfwGetTime())/2;
+
         // rendering commands here
 
-        //
-        //glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-        //glClear(GL_COLOR_BUFFER_BIT);
-        float T=1+sin(17.2787595947*glfwGetTime())/2;
-        {
-            for(int w=0;w<worldCurvatures.size();w++){
-                worldCurvs[w]=worldCurvatures[w];
-            }
-            glUniform1fv(glGetUniformLocation(shaderProgram, "iaunits"),128,worldCurvs);
-            shader_data[0]=pawbuffer.size()+1;//serializing
-            for(int w=0;w<pawbuffer.size();w++){
-                shader_data[w+1]=shader_data[w]+pawbuffer[w].size()*sizeOfPow;
-                for(int i=0;i<pawbuffer[w].size();i++){
-                    for(int p=0;p<sizeOfPow;p++){
+        frameacum += framesPerTick;
+        if(frameacum >= 1){
+            glfwSwapBuffers(window);
+            frameacum -= int(frameacum);
+            {
+                for(int w=0;w<worldCurvatures.size();w++){
+                    worldCurvs[w]=worldCurvatures[w];
+                }
+                glUniform1fv(glGetUniformLocation(shaderProgram, "iaunits"),128,worldCurvs);
+                shader_data[0]=pawbuffer.size()+1;//serializing
+                for(int w=0;w<pawbuffer.size();w++){
+                    shader_data[w+1]=shader_data[w]+pawbuffer[w].size()*sizeOfPow;
+                    for(int i=0;i<pawbuffer[w].size();i++){
+                        for(int p=0;p<sizeOfPow;p++){
                             shader_data[(int)shader_data[w]+sizeOfPow*i+p]=pawbuffer[w][i][p];
+                        }
                     }
                 }
+                shader_data[66559]=T;
             }
-            shader_data[66559]=T;
             glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(shader_data), shader_data);
-            //if(frameCount%60==0) std::cout<<glfwGetTime()-NFT+1/60.0<<"\n";
+            glUniform1i(glGetUniformLocation(shaderProgram, "res"),windowres/windowScale);
+            glUniform1f(glGetUniformLocation(shaderProgram, "T"),T);
+            //1st pass
+            float playerLocation[3];
+            copypt(pl,playerLocation);
+            glUniform3fv(glGetUniformLocation(shaderProgram,"pl"),1,&playerLocation[0]);
+            float playerLocation2[3];
+            copypt(pl2,playerLocation2);
+            glUniform3fv(glGetUniformLocation(shaderProgram,"pl2"),1,&playerLocation2[0]);
+            float cameraReference[3];
+            copypt(camRef,cameraReference);
+            glUniform3fv(glGetUniformLocation(shaderProgram,"camRef"),1,&cameraReference[0]);
+            float duplicatePlayerLocation[3];
+            copypt(playerduploc,duplicatePlayerLocation);
+            glUniform3fv(glGetUniformLocation(shaderProgram,"playerduploc"),1,&duplicatePlayerLocation[0]);
+            float duplicatePlayerLocation2[3];
+            copypt(playerduploc2,duplicatePlayerLocation2);
+            glUniform3fv(glGetUniformLocation(shaderProgram,"playerduploc2"),1,&duplicatePlayerLocation2[0]);
+            glUniform1f(glGetUniformLocation(shaderProgram, "mirrorPlayer"),plp[0]);
+            glUniform1f(glGetUniformLocation(shaderProgram, "mirrorDup"),mirrorDup);
+            glUniform1f(glGetUniformLocation(shaderProgram, "zoom"),zoom);
+            glUniform1i(glGetUniformLocation(shaderProgram, "pw"),pw);
+            glUniform1i(glGetUniformLocation(shaderProgram, "duppw"),duppw);
+            glUniform1i(glGetUniformLocation(shaderProgram, "iopip"),iopip);
+            glUniform1i(glGetUniformLocation(shaderProgram, "diopip"),diopip);
+            glBindFramebuffer(GL_FRAMEBUFFER, framebuffer1);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, windowres/windowScale, windowres/windowScale, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framestage1, 0);
+            //std::thread render(renderFrame, windowres, windowScale, height, width, zoom, shaderProgram, framestage1, framebuffer1, postprocessfull, window, T);glfwMakeContextCurrent(window);
+            //double timetest = glfwGetTime();
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+            //timetest = glfwGetTime()-timetest;printf("%lf\n",timetest);
+            //
+            //2nd pass
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glUseProgram(postprocessfull);
+            glUniform1i(glGetUniformLocation(postprocessfull, "height"),height);
+            glUniform1i(glGetUniformLocation(postprocessfull, "width"),width);
+            glUniform1i(glGetUniformLocation(postprocessfull, "windowScale"),windowScale);
+            glUniform1f(glGetUniformLocation(postprocessfull, "zoom"),zoom);
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+
+            // check and call events and swap the buffers
+            glUseProgram(shaderProgram);//*/
         }
-        glUniform1f(glGetUniformLocation(shaderProgram, "T"),T);
-        //int pawl = glGetUniformLocation(shaderProgram, "paw");
-        //glUniform1fv(pawl,512,paw);
-        //
-        //1st pass
-        float playerLocation[3];
-        copypt(pl,playerLocation);
-        glUniform3fv(glGetUniformLocation(shaderProgram,"pl"),1,&playerLocation[0]);
-        float playerLocation2[3];
-        copypt(pl2,playerLocation2);
-        glUniform3fv(glGetUniformLocation(shaderProgram,"pl2"),1,&playerLocation2[0]);
-        float cameraReference[3];
-        copypt(camRef,cameraReference);
-        glUniform3fv(glGetUniformLocation(shaderProgram,"camRef"),1,&cameraReference[0]);
-        float playerFacing[3];
-        copypt(facingAngle,playerFacing);
-        glUniform2fv(glGetUniformLocation(shaderProgram,"playerFacing"),1,&playerFacing[0]);
-        float duplicatePlayerLocation[3];
-        copypt(playerduploc,duplicatePlayerLocation);
-        glUniform3fv(glGetUniformLocation(shaderProgram,"playerduploc"),1,&duplicatePlayerLocation[0]);
-        float duplicatePlayerLocation2[3];
-        copypt(playerduploc2,duplicatePlayerLocation2);
-        glUniform3fv(glGetUniformLocation(shaderProgram,"playerduploc2"),1,&duplicatePlayerLocation2[0]);
-        glUniform1f(glGetUniformLocation(shaderProgram, "mirrorPlayer"),plp[0]);
-        glUniform1f(glGetUniformLocation(shaderProgram, "mirrorDup"),mirrorDup);
-        glUniform1f(glGetUniformLocation(shaderProgram, "zoom"),zoom);
-        glUniform1i(glGetUniformLocation(shaderProgram, "pw"),pw);
-        glUniform1i(glGetUniformLocation(shaderProgram, "duppw"),duppw);
-        glUniform1i(glGetUniformLocation(shaderProgram, "iopip"),iopip);
-        glUniform1i(glGetUniformLocation(shaderProgram, "diopip"),diopip);
-        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer1);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framestage1, 0);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
-        //
-        //2nd pass
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glUseProgram(postprocessfull);
-        glUniform1i(glGetUniformLocation(postprocessfull, "height"),height);
-        glUniform1i(glGetUniformLocation(postprocessfull, "width"),width);
-        glUniform1f(glGetUniformLocation(postprocessfull, "zoom"),zoom);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+
         frameCount++;
         deltaTime=glfwGetTime()-deltaTime;
-
-        // check and call events and swap the buffers
         glfwPollEvents();
-        glfwSwapBuffers(window);
-        glUseProgram(shaderProgram);
 
-        while(glfwGetTime()<NFT);
-        if(glfwGetTime()>=60) glfwSetTime(0);
+
+        while(glfwGetTime() < NFT);
+        if(glfwGetTime()>= tickRate) glfwSetTime(0);
     }
 
     glfwTerminate();

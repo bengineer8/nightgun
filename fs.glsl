@@ -20,7 +20,7 @@ const vec4 bgcolor=vec4(0,0,0,1);
 out vec4 FragColor;
 uniform int res=800;
 uniform float T=1.0,pz,pcx,pcy,pcz,zoom=1.0;
-uniform vec2 playerFacing = vec2(1,0);
+//uniform vec2 playerFacing = vec2(1,0);
 uniform vec3 pl,pl2,camRef,playerduploc,playerduploc2;
 uniform int pw;//player world
 uniform int duppw;
@@ -956,8 +956,8 @@ void main(){
         if(iterations == maxits) FragColor = bgcolor;
     } else {//outside the view area
         FragColor = bgcolor;//8
-        if(screenPos.y < min(-.6,abs(screenPos.x)-sqrt(2)) && abs(screenPos.x) > 0.6) FragColor = vec4(0.66,0.66,0.66,1);
-        if(screenPos.x > 1) FragColor = vec4(0,.125,0.498,1);
+        if(screenPos.y < min(-.6,abs(screenPos.x)-sqrt(2)) && abs(screenPos.x) > 0.6) FragColor = vec4(0.66,0.66,0.66,1);//TODO make this handled by the next shader
+        //if(screenPos.x > 1) FragColor = vec4(0,.125,0.498,1);
     }
     //FragColor=round(FragColor);
 }

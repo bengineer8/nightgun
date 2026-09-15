@@ -4,7 +4,7 @@ const float tpi=6.283185307;
 const float pi=3.14159265359;
 const float wallthickness=1/18.0;
 uniform float zoom=1.0;
-uniform int height,width;
+uniform int height, width, windowScale;
 uniform sampler2D previousstep;
 out vec4 FragColor;
 
@@ -15,8 +15,15 @@ float brightness(vec4 color){
 
 void main(){
     int res=min(height,width);
-    float x=gl_FragCoord.x, y=gl_FragCoord.y;
-    FragColor=texture(previousstep,vec2(x/width,y/height));
+    float x = gl_FragCoord.x, y = gl_FragCoord.y;
+    x = windowScale*floor(x/windowScale)+1;
+    y = windowScale*floor(y/windowScale);
+    y = y - height + res;
+    //x *= windowScale; y /= windowScale;
+    if(x < res && y > 0){
+        FragColor=texture(previousstep,vec2(x/res,y/res));
+    }
+    else FragColor = vec4(0,.125,0.498,1);
     //FragColor=vec4(0,brightness(FragColor),0,1);
     /*FragColor=vec4(0,0,0,1);
     int samples=0;
