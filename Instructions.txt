@@ -17,3 +17,5 @@ Linux:
 
 Mac:
     coming not any time soon
+
+If your controller is not being detected, try closing the program, incrementing the default controller by 1, and restarting the program. Give up after maybe like 5 and contact me.
