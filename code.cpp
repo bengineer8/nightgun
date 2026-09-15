@@ -2653,15 +2653,15 @@ int main(){
         }
         std::string s;
         std::getline(f, s);
-        defaultController = stoi(s.substr(0,s.find(" ")));
+        defaultController = stoi(s);
         std::getline(f, s);
-        defaultWidth = stoi(s.substr(0,s.find(" ")));
+        defaultWidth = stoi(s);
         std::getline(f, s);
-        defaultHeight = stoi(s.substr(0,s.find(" ")));
+        defaultHeight = stoi(s);
         std::getline(f, s);
-        windowScale = stoi(s.substr(0,s.find(" ")));
+        windowScale = stoi(s);
         std::getline(f, s);
-        framesPerTick = stoi(s.substr(0,s.find(" ")))/tickRate;
+        framesPerTick = stoi(s)/tickRate;
         f.close();
     }
 
