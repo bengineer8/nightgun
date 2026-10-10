@@ -271,7 +271,7 @@ void main(){
                                 cip1=p1;cip2=p2;cii=i;cid=xt;
                             }
                         }
-                    } else if(sourceIndex == i) ignoreNextSelf = false;
+                    } else ignoreNextSelf = false;
                     i += sizeOfpow;
                 }
                 if(cii>-1) {
@@ -461,7 +461,7 @@ void main(){
                                 cip2=p2;
                             }
                         }
-                    } else if(sourceIndex == i) ignoreNextSelf = false;
+                    } else ignoreNextSelf = false;
                     i += sizeOfpow;
                 }
                 if(wraparound && cii < 0){
@@ -527,10 +527,6 @@ void main(){
 
                     */
                 } else {
-                    if(wraparound){
-                        hitwall = true;
-                        FragColor=vec4(0,0,0,1);
-                    }
                     endOfRay = roti*vec3(ds,0,dc);
                     d=0;
                 }
@@ -595,7 +591,7 @@ void main(){
                             cip1 = p1;
                             cip2 = p2;
                         }
-                    } else if(i == sourceIndex) ignoreNextSelf = false;
+                    } else ignoreNextSelf = false;
                     i += sizeOfpow;
                 }//*/
                 if(cii > 0){
@@ -956,7 +952,7 @@ void main(){
         if(iterations == maxits) FragColor = bgcolor;
     } else {//outside the view area
         FragColor = bgcolor;//8
-        if(screenPos.y < min(-.6,abs(screenPos.x)-sqrt(2)) && abs(screenPos.x) > 0.6) FragColor = vec4(0.66,0.66,0.66,1);//TODO make this handled by the next shader
+        //if(screenPos.y < min(-.6,abs(screenPos.x)-sqrt(2)) && abs(screenPos.x) > 0.6) FragColor = vec4(0.66,0.66,0.66,1);//TODO make this handled by the next shader
         //if(screenPos.x > 1) FragColor = vec4(0,.125,0.498,1);
     }
     //FragColor=round(FragColor);
