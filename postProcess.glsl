@@ -16,12 +16,15 @@ float brightness(vec4 color){
 void main(){
     int res=min(height,width);
     float x = gl_FragCoord.x, y = gl_FragCoord.y;
-    x = windowScale*floor(x/windowScale)+1;
-    y = windowScale*floor(y/windowScale);
+    float x2 = windowScale*floor(x/windowScale + 1);
     y = y - height + res;
-    //x *= windowScale; y /= windowScale;
-    if(x < res && y > 0){
-        FragColor=texture(previousstep,vec2(x/res,y/res));
+    float y2 = windowScale*floor(y/windowScale);
+    x = x/res; y = y/res;
+    if(x < 1 && y > 0){
+        if(y < min(.2,abs(x-.5) - (sqrt(2) - 1)/2) && abs(x-.5) > .3) FragColor = vec4(.66,0.66,0.66,1);
+        else {
+            if(x2 < res && y2 > 0) FragColor=texture(previousstep,vec2(x2/res,y2/res));
+        }
     }
     else FragColor = vec4(0,.125,0.498,1);
     //FragColor=vec4(0,brightness(FragColor),0,1);

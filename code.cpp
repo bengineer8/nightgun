@@ -1505,6 +1505,7 @@ void moveEntity(double dx, double dy, double pos[], double pos2[], double ref[],
                     rotXY(rot,c,-s);
                     rotate(pos2r[0],pos2r[1],c,-s);
                     copymat(rot,rotmstart);
+                    //printM(rot);
                 } else {
                     d -= acosh(cip[2]);
                     double side = 1;
@@ -2539,6 +2540,7 @@ int main(){
         vec3(camRef, pl[0]+1,pl[1],0);
         plp[0] = 1;//setting this to negative 1 mirrors
         duppw = -1;//signals that the player isn't in a portal
+        //vec3(camRef, pl[0]+1,pl[1],sr2);
     }//*/
 
 
