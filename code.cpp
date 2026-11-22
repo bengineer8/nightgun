@@ -72,7 +72,16 @@ void printP(float p[3]){
     printf("%.9g, %.9g, %.9g\n",p[0],p[1],p[2]);
 }
 
-float mkdest(int t, int w, int i, int s, int m) {return (float)(t|((w|((i|((s|m<<1)<<10))<<9))<<3));}//type, destination (world, index, side, mirror)
+const int
+datWorldWidth = 11,
+datIndexWidth = 8,
+datWorldMask = (1<<datWorldWidth) - 1,
+datIndexMask = (1<<datIndexWidth) - 1,
+datWorldOff = 3,
+datIndexOff = datWorldWidth + datWorldOff
+;
+
+float mkdest(int t, int w, int i, int s, int m) {return (float)(t|((w|((i|((s|m<<1)<<datIndexWidth))<<datWorldWidth))<<3));}//type, destination (world, index, side, mirror)
 
 double safe_sqrt(double x){
     if(x<0) return 0;
@@ -506,193 +515,80 @@ std::vector<float> h2threepointstowall(double p2[], double p3[], double p4[]){
 
 void addExtraToPOW(std::vector<float>& G, float iaunit){
     double p1[3] = {G[0],G[1],G[2]}, p2[3] = {G[3],G[4],G[5]};
-    double L = G[6];
+    double limit;
     int dat = (int)G[7];
     char type = dat&7;
     bool iswall = (type > 3);
     if(iaunit > 0){
-        if(iswall || true){
-            //
-            double A,B,D,cr,sr2,t;
-            cr = dot(p1,p2);
-            sr2 = 1 - cr*cr;
-            double L2 = 1 + sr2*L;//TODO remove the conversion and just store as the radius dependent value
-            B = (L2 - cr*cr)/sr2;
-            A = cr*(1 - B);
-            D = A*A + 2*A*B*cr+B*B;
-            t = sqrt( (1 - D)/sr2);
-            double p3[3];
-            cross(p1,p2,p3);
-            double endpt1[3], endpt2[3];
-            for(int n = 0; n < 3; n++) {
-                endpt1[n] = A*p1[n] + B*p2[n] + t*p3[n];
-                endpt2[n] = A*p1[n] + B*p2[n] - t*p3[n];
-            }
-            //*/
-            /*/
-            double rot[3][3], roti[3][3];
-            double endpt1[3], endpt2[3];
-            s2matto(p1,rot);
-            matxpt(rot,p2);
-            double cos = G[6] + 1, sin = sqrt(1 - cos*cos);
-            copypt(p2,endpt1);
-            copypt(p2,endpt2);
-            rotate(endpt1[0],endpt1[1],cos,sin);
-            rotate(endpt2[0],endpt2[1],cos,-sin);
-            transpose(rot,roti);
-            matxpt(roti,endpt1);
-            matxpt(roti,endpt2);//*/
-            G.push_back(endpt1[0]);
-            G.push_back(endpt1[1]);
-            G.push_back(endpt1[2]);
-            G.push_back(endpt2[0]);
-            G.push_back(endpt2[1]);
-            G.push_back(endpt2[2]);
-            //printP(endpt1);
-            //printP(endpt2);
-        } else {
-            double rc = dot(p1,p2),
-            rs = sqrt(1 - rc*rc);
-            double rot[3][3], roti[3][3];
-            s2matto(p1,rot);
-            matxpt(rot,p2);
-            G.push_back(rot[0][1]);//-s1
-            G.push_back(rot[1][1]);//c1
-            G.push_back(rot[2][0]);//-r
-            G.push_back(p2[0]/rs);//c2
-            G.push_back(p2[1]/rs);//s2
-            G.push_back(rs);
-        }
-    } else if(iaunit == 0){
-            p2[0] -= p1[0];p2[1] -= p1[1];
-            if(iswall){
-                if(type == 5) {for(int n = 0; n < 6; n++) G.push_back(0);}
-                else {
-                    double cos = 1 - G[6]/2, sin = sqrt(1 - cos*cos);
-                    double x = p2[0], y = p2[1];
-                    rotate(x,y,cos,sin);
-                    G.push_back(x);G.push_back(y);G.push_back(0);
-                    x = p2[0]; y = p2[1];
-                    rotate(x,y,cos,-sin);
-                    G.push_back(x);G.push_back(y);G.push_back(0);
-                }
-        } else {
-            //Note: unused ATM
-            p2[0] -= p1[0];p2[1] -= p1[1];
-            double r = sqrt(p2[0]*p2[0] + p2[1]*p2[1]);
-            G.push_back(p2[0]/r);
-            G.push_back(-p2[1]/r);
-            G.push_back(r);
-            double ox = -p1[0], oy = -p1[1];
-            rotate(ox,oy,G[8],G[9]);
-            G.push_back(ox);
-            G.push_back(oy);
-            G.push_back(0);//to do: put something funny here?
-        }
-    } else if(iaunit < 0){
-        if(true){
-            double k = lidot(p1,p2);
-            double rot[3][3], roti[3][3];
-            h2matto(p2,rot);
-            matxpt(rot,p1);
-            double r = sqrt(p1[0]*p1[0] + p1[1]*p1[1]);
-            rotateXY(rot, p1[0]/r,-p1[1]/r);
-            double endpt1[3], endpt2[3];
-            endpt1[0] = k*(L - 1)/r;
-            endpt1[1] = sqrt(L*L - 1 - endpt1[0]*endpt1[0]);
-            endpt1[2] = sqrt(endpt1[0]*endpt1[0] + endpt1[1]*endpt1[1] + 1);
-            copypt(endpt1,endpt2);
-            endpt2[1] = -endpt2[1];
-            h2invert(rot,roti);
-            matxpt(roti,endpt1);
-            matxpt(roti,endpt2);
-            G.push_back(endpt1[0]);
-            G.push_back(endpt1[1]);
-            G.push_back(endpt1[2]);
-            G.push_back(endpt2[0]);
-            G.push_back(endpt2[1]);
-            G.push_back(endpt2[2]);
-        } else {
-            for(int n = 8; n < 14; n++) G.push_back(0);//placeholder
-            //...
-        }
-    }
-    //...
-}
-/*void addExtraToPOW(std::vector<float>& G, float iaunit){//NOTE: to do: split this up by geometry instead of by type
-    double p1[3] = {G[0],G[1],G[2]}, p2[3] = {G[3],G[4],G[5]};
-    int dat = (int)G[7];
-    char type = dat&7;
-    if(type > 3){
+        if(G[6] == -2) G[6] = -3;
+        limit = G[6];
         double endpt1[3], endpt2[3];
-        if(iaunit == 0){
-            if(type == 5){
-                copypt(p1,endpt1);
-                copypt(p2,endpt2);
-            } else if(iaunit > 0){
-                p2[0] -= p1[0];p2[1] -= p1[1];
-                double cos = 1 - G[6]/2, sin = sqrt(1 - cos*cos);
-                copypt(p2,endpt1);
-                copypt(p2,endpt2);
-                rotate(endpt1[0],endpt1[1],cos,sin);
-                rotate(endpt2[0],endpt2[1],cos,-sin);
-                endpt1[0] += p1[0];endpt1[1] += p1[1];
-                endpt2[0] += p1[0];endpt2[1] += p1[1];
-            }
-        } else if(iaunit > 0){
-            double rot[3][3], roti[3][3];
-            s2matto(p1,rot);
-            matxpt(rot,p2);
-            double cos = G[6] + 1, sin = sqrt(1 - cos*cos);
-            copypt(p2,endpt1);
-            copypt(p2,endpt2);
-            rotate(endpt1[0],endpt1[1],cos,sin);
-            rotate(endpt2[0],endpt2[1],cos,-sin);
-            transpose(rot,roti);
-            matxpt(roti,endpt1);
-            matxpt(roti,endpt2);
+        {
+            double sr2 = dot(p1,p2);
+            sr2 = 1 - sr2*sr2;
+            limit = 1 + sr2*limit;
         }
+        double cr = dot(p1,p2);
+        double rot[3][3], roti[3][3];
+        s2matto(p1,rot);
+        matxpt(rot,p2);
+        double cos = (limit - 1)/(1 - cr*cr) + 1, sin = sqrt(1 - cos*cos);
+        copypt(p2,endpt1);
+        copypt(p2,endpt2);
+        rotate(endpt1[0],endpt1[1],cos,sin);
+        rotate(endpt2[0],endpt2[1],cos,-sin);
+        transpose(rot,roti);
+        matxpt(roti,endpt1);
+        matxpt(roti,endpt2);
         G.push_back(endpt1[0]);
         G.push_back(endpt1[1]);
         G.push_back(endpt1[2]);
         G.push_back(endpt2[0]);
         G.push_back(endpt2[1]);
         G.push_back(endpt2[2]);
-    } else {
-        if(iaunit == 0){
-            p2[0] -= p1[0];p2[1] -= p1[1];
-            double r = sqrt(p2[0]*p2[0] + p2[1]*p2[1]);
-            G.push_back(p2[0]/r);
-            G.push_back(-p2[1]/r);
-            G.push_back(r);
-            double ox = -p1[0], oy = -p1[1];
-            rotate(ox,oy,G[8],G[9]);
-            G.push_back(ox);
-            G.push_back(oy);
-            G.push_back(0);//to do: put something funny here?
-        } else if(iaunit > 0){
-            double rc = dot(p1,p2),
-            rs = sqrt(1 - rc*rc);
-            double rot[3][3], roti[3][3];
-            s2matto(p1,rot);
-            matxpt(rot,p2);
-            G.push_back(rot[0][1]);//-s1
-            G.push_back(rot[1][1]);//c1
-            G.push_back(rot[2][0]);//-r
-            G.push_back(p2[0]/rs);//c2
-            G.push_back(p2[1]/rs);//s2
-            G.push_back(rs);
+    } else if(iaunit == 0){
+        p2[0] -= p1[0];p2[1] -= p1[1];
+        if(G[6] == 4) G[6] = 5;
+        limit = G[6];
+        double r2 = p2[0]*p2[0] + p2[1]*p2[1];
+        limit *= r2;
+        if(type == 5) {for(int n = 0; n < 6; n++) G.push_back(0);}
+        else {
+            double cos = 1 - limit/r2/2, sin = sqrt(1 - cos*cos);
+            double x = p2[0], y = p2[1];
+            rotate(x,y,cos,sin);
+            G.push_back(x);G.push_back(y);G.push_back(0);
+            x = p2[0]; y = p2[1];
+            rotate(x,y,cos,-sin);
+            G.push_back(x);G.push_back(y);G.push_back(0);
         }
+    } else if(iaunit < 0){
+        limit = G[6];
+        double k = lidot(p1,p2);
+        double rot[3][3], roti[3][3];
+        h2matto(p2,rot);
+        matxpt(rot,p1);
+        double r = sqrt(p1[0]*p1[0] + p1[1]*p1[1]);
+        rotateXY(rot, p1[0]/r,-p1[1]/r);
+        double endpt1[3], endpt2[3];
+        endpt1[0] = k*(limit - 1)/r;
+        endpt1[1] = sqrt(limit*limit - 1 - endpt1[0]*endpt1[0]);
+        endpt1[2] = sqrt(endpt1[0]*endpt1[0] + endpt1[1]*endpt1[1] + 1);
+        copypt(endpt1,endpt2);
+        endpt2[1] = -endpt2[1];
+        h2invert(rot,roti);
+        matxpt(roti,endpt1);
+        matxpt(roti,endpt2);
+        G.push_back(endpt1[0]);
+        G.push_back(endpt1[1]);
+        G.push_back(endpt1[2]);
+        G.push_back(endpt2[0]);
+        G.push_back(endpt2[1]);
+        G.push_back(endpt2[2]);
     }
-    if(iaunit < 0){
-        for(int n = 8;n < 14;n++) G.push_back(0);//placeholder
-    }
-}*/
-
-void getTouchingChunksNary(){
-    //
+    G[6] = limit;
+    //...
 }
-
 
 class entity{
 public:
@@ -741,10 +637,10 @@ void addDuplicate(entity& E, int i, double relLoc, double disToCp, double rp[3][
     //printf("%lf\t%lf\n",relLoc,disToCp);
     int dat = paw[i + 7];
     E.intersectingPortalIndex = i;
-    E.duplicate[0].currentWorld = ((dat)>>3)&511;
+    E.duplicate[0].currentWorld = ((dat)>>datWorldOff)&datWorldMask;
     E.duplicate[0].radius = E.radius;
     E.duplicate[0].isDupe = true;
-    int di = int(paw[E.duplicate[0].currentWorld]) + sizeOfPow*((dat>>12)&1023);
+    int di = int(paw[E.duplicate[0].currentWorld]) + sizeOfPow*((dat>>datIndexOff)&datIndexMask);
     E.duplicate[0].intersectingPortalIndex = di;
     double mirror, side;
     if(((dat>>22)&1)==1) side = -1;
@@ -962,8 +858,8 @@ void moveEntity(double dx, double dy, entity& E, bool& abortMove){
             cip[0] = ds;
             int i = int(paw[E.currentWorld]);
             while(i < (int)paw[E.currentWorld + 1]){
-                double p1[3] = {paw[i],paw[i + 1],paw[i + 2]},
-                p2[3] = {paw[i + 3],paw[i + 4],paw[i + 5]};
+                double p1[3], p2[3];
+                copypt(&paw[i],p1); copypt(&paw[i+3],p2);
                 double limit = paw[i + 6];
                 type = int(paw[i + 7])&3;
                 k = lidot(p1,p2);
@@ -1015,8 +911,8 @@ void moveEntity(double dx, double dy, entity& E, bool& abortMove){
                     entranceLoc = lidot(cip,cip2);
                     if(entranceLoc < 1) entranceLoc = 1;
                     double k = lidot(cip1,cip2);
-                    E.currentWorld = ((dat)>>3)&511;
-                    di = int(paw[E.currentWorld]) + sizeOfPow*((dat>>12)&1023);
+                    E.currentWorld = ((dat)>>datWorldOff)&datWorldMask;
+                    di = int(paw[E.currentWorld]) + sizeOfPow*((dat>>datIndexOff)&datIndexMask);
                     sourceIndex = di;
                     vec3(sourcept1, paw[di],paw[di + 1],paw[di + 2]);
                     vec3(sourcept2, paw[di + 3],paw[di + 4],paw[di + 5]);
@@ -1084,8 +980,8 @@ void moveEntity(double dx, double dy, entity& E, bool& abortMove){
                     else isWall = false;
                     if(!(isWall && E.bounce)){
                         type &= 3;
-                        double p1[] = {paw[i],paw[i + 1],paw[i + 2]}, p2[] = {paw[i + 3],paw[i + 4],paw[i + 5]};
-                        double p0[] = {E.cord1[0],E.cord1[1],E.cord1[2]};
+                        double p1[3], p2[3]; copypt(&paw[i],p1); copypt(&paw[i + 3],p2);
+                        double p0[3]; copypt(E.cord1, p0);
                         k = lidot(p1,p2);
                         double i01 = lidot(p0,p1), i11 = 1 - type;
                         double C = i01*i01 - i11;
@@ -1201,22 +1097,22 @@ void moveEntity(double dx, double dy, entity& E, bool& abortMove){
                     type &= 3;
                     double p1[] = {paw[i],paw[i + 1]}, p2[] = {paw[i + 3],paw[i + 4]};
                     r = (p1[0] - p2[0])*(p1[0] - p2[0]) + (p1[1] - p2[1])*(p1[1] - p2[1]);//actually r^2
-                    double al = paw[i + 6];//TODO store things with al already multiplied by r^2
+                    double limit = paw[i + 6];
                     rotate(p1[0],p1[1],rot[0],rot[1]);
                     p1[0] += off[0];p1[1] += off[1];
                     rotate(p2[0],p2[1],rot[0],rot[1]);
                     p2[0] += off[0];p2[1]+=off[1];
                     if(type == 0){
-                        if(p1[1]*p1[1]<=r&&(al==4*r||p2[1]*p2[1]<=al*r)){
+                        if(p1[1]*p1[1] <=r && ( p2[1]*p2[1] <= limit )){
                             double o=sqrt(r-p1[1]*p1[1]), xt=p1[0]-o, xt1=abs(xt);
-                            if(((al==4) || ((xt-p2[0])*(xt-p2[0])+p2[1]*p2[1]<=al*r)) && xt>0 && xt<cid && i!=sourceIndex ){
+                            if((((xt-p2[0])*(xt-p2[0])+p2[1]*p2[1] <= limit)) && xt>0 && xt<cid && i!=sourceIndex ){
                                 cip1[0]=p1[0];cip1[1]=p1[1];
                                 cip2[0]=p2[0];cip2[1]=p2[1];
                                 cii = i; cid = xt;
                             }
                             xt=p1[0]+o;
                             if(xt>0){
-                                if(((al==4) || ((xt-p2[0])*(xt-p2[0])+p2[1]*p2[1]<=al*r)) && xt<cid && (i!=sourceIndex || xt>xt1) ){//problem place, think it is fixed now.
+                                if(((xt-p2[0])*(xt-p2[0])+p2[1]*p2[1] <= limit) && xt<cid && (i!=sourceIndex || xt>xt1) ){//problem place, think it is fixed now.
                                     cip1[0]=p1[0];cip1[1]=p1[1];
                                     cip2[0]=p2[0];cip2[1]=p2[1];
                                     cii = i; cid = xt;
@@ -1256,8 +1152,8 @@ void moveEntity(double dx, double dy, entity& E, bool& abortMove){
                         entranceLoc = -r- R/2;
                     }
                     dat = (int)paw[cii + 7];
-                    E.currentWorld = ((dat)>>3)&511;
-                    di = int(paw[E.currentWorld]) + sizeOfPow*((dat>>12)&1023);
+                    E.currentWorld = ((dat)>>datWorldOff)&datWorldMask;
+                    di = int(paw[E.currentWorld]) + sizeOfPow*((dat>>datIndexOff)&datIndexMask);
                     sourceIndex = di;
                     sourcept1[0]=paw[di];sourcept1[1]=paw[di+1];sourcept1[2]=paw[di+2];
                     sourcept2[0]=paw[di+3];sourcept2[1]=paw[di+4];sourcept2[2]=paw[di+5];
@@ -1325,15 +1221,17 @@ void moveEntity(double dx, double dy, entity& E, bool& abortMove){
                         type &= 3;
                         double d2;
                         if(type == 0){
-                            double al = paw[i + 6], ala = r2*al;//TODO remove all uses of al and just use ala
-                            double c = 1 - al/2;
-                            double s = sign(p0[1]*p2[0] - p0[0]*p2[1])*safe_sqrt(c*c - 1);
-                            double endPt[2] = {p2[0],p2[1]};
-                            rotate(endPt[0],endPt[1],c,s);
+                            double limit = paw[i + 6];
+                            //
+                            int o;
+                            if(sign(p0[1]*p2[0] - p0[0]*p2[1]) > 0) o = 8;
+                            else o = 11;
+                            double endPt[] = {paw[i + o],paw[i + o + 1]};
+                            //
                             double C = r/sqrt(p0[0]*p0[0] + p0[1]*p0[1]);
                             cp[0] = C*p0[0]; cp[1] = C*p0[1];
                             d2 = (cp[0] - p2[0])*(cp[0] - p2[0]) + (cp[1] - p2[1])*(cp[1] - p2[1]);
-                            if( d2 > ala && al != 4){
+                            if( d2 > limit ){
                                 cp[0] = endPt[0]; cp[1] = endPt[1];
                             }
                         } else {
@@ -1409,7 +1307,8 @@ void moveEntity(double dx, double dy, entity& E, bool& abortMove){
             double cip2[3],cip[3];
             double cidr = s2disrank(dc,ds);
             while(i<(int)paw[E.currentWorld + 1]){
-                double p1[3]={paw[i],paw[i+1],paw[i+2]}, p2[3]={paw[i+3],paw[i+4],paw[i+5]};
+                double p1[3], p2[3];
+                copypt(&paw[i],p1); copypt(&paw[i+3],p2);
                 cr =dot(p1,p2);
                 sr = 1 - cr*cr;//actually sr^2, just reusing space
                 matxpt(transform,p1);
@@ -1418,7 +1317,8 @@ void moveEntity(double dx, double dy, entity& E, bool& abortMove){
                 if(y1y1 < sr){
                     double cipp[3], cipm[3];//closest intersection point plus and minus
                     double s=sqrt(sr-y1y1), D=1-y1y1;//angle limit, (cos(a)-1), decreases with angle
-                    double al=paw[i+6], ala=1+sr*al, disrank;
+                    double disrank;
+                    double limit = paw[i + 6];
                     cipp[0]=(p1[0]*cr+p1[2]*s)/D;
                     cipm[0]=(p1[0]*cr-p1[2]*s)/D;
                     cipp[2]=(p1[2]*cr-p1[0]*s)/D;
@@ -1426,7 +1326,7 @@ void moveEntity(double dx, double dy, entity& E, bool& abortMove){
                     cipp[1]=0;cipm[1]=0;
 
                     disrank = s2disrank(cipp[2],cipp[0]);
-                    if( ( al == -2 || dot(cipp,p2) > ala ) && disrank < cidr && (sourceIndex != i || cipp[2] < cipm[2]) ){
+                    if( dot(cipp,p2) > limit && disrank < cidr && (sourceIndex != i || cipp[2] < cipm[2]) ){
                         cii=i;
                         copypt(p1,cip1);
                         copypt(p2,cip2);
@@ -1434,7 +1334,7 @@ void moveEntity(double dx, double dy, entity& E, bool& abortMove){
                         cidr=disrank;
                     }
                     disrank=s2disrank(cipm[2],cipm[0]);
-                    if( ( al == -2 || dot(cipm,p2) > ala ) && disrank < cidr && (sourceIndex !=i || cipm[2] < cipp[2]) ){
+                    if( dot(cipm,p2) > limit && disrank < cidr && (sourceIndex !=i || cipm[2] < cipp[2]) ){
                         cii=i;
                         copypt(p1,cip1);
                         copypt(p2,cip2);
@@ -1460,8 +1360,8 @@ void moveEntity(double dx, double dy, entity& E, bool& abortMove){
                     d -= acos(cip[2])/iaunit - ped;
                     sourceIndex = cii;
                 } else {
-                    E.currentWorld = ((dat)>>3)&511;
-                    di = int(paw[E.currentWorld]) + sizeOfPow*((dat>>12)&1023);
+                    E.currentWorld = ((dat)>>datWorldOff)&datWorldMask;
+                    di = int(paw[E.currentWorld]) + sizeOfPow*((dat>>datIndexOff)&datIndexMask);
                     sourceIndex = di;
                     sourcept1[0]=paw[di];sourcept1[1]=paw[di+1];sourcept1[2]=paw[di+2];
                     sourcept2[0]=paw[di+3];sourcept2[1]=paw[di+4];sourcept2[2]=paw[di+5];
@@ -1509,10 +1409,11 @@ void moveEntity(double dx, double dy, entity& E, bool& abortMove){
                 while(i < paw[E.currentWorld + 1] && !inWall){
                     bool isWall = (int(paw[i + 7])&4) != 0;
                     if(!isWall || !E.bounce){
-                        double p0[3], p1[] = {paw[i],paw[i+1],paw[i+2]}, p2[]={paw[i+3],paw[i+4],paw[i+5]};
+                        double p0[3], p1[3], p2[3];
+                        copypt(&paw[i],p1); copypt(&paw[i + 3],p2);
                         cr = dot(p1,p2);
                         sr = 1 - cr*cr;//actually sr^2
-                        double limit = 1 + paw[i+6]*sr;
+                        double limit = paw[i + 6];
                         copypt(E.cord1,p0);
                         double d10 = dot(p1,p0);//You thought it would be a better name, but it was ME,...
                         double A = sqrt(sr/(1-d10*d10)), B = cr - A*d10;
@@ -2545,16 +2446,7 @@ int main(){
     //10
 
 
-    paw[0]=pawbuffer.size()+1;//serializing, redundant to later doing it every frame. This is so I can see debug info and be lazy
-    for(int w=0;w<pawbuffer.size();w++){
-        paw[w+1]=paw[w]+pawbuffer[w].size()*sizeOfPow;
-        for(int i=0;i<pawbuffer[w].size();i++){
-            if(pawbuffer[w][i].size() < 14) addExtraToPOW(pawbuffer[w][i], worldCurvatures[w]);
-            for(int p=0;p<sizeOfPow;p++){
-                    paw[(int)paw[w]+sizeOfPow*i+p]=pawbuffer[w][i][p];
-            }
-        }
-    }
+
 
 
 
@@ -2782,6 +2674,18 @@ int main(){
     bool kHeld = false, lHeld = false;
     bool worldchange = false;
 
+    paw[0]=pawbuffer.size()+1;//serializing, redundant to later doing it every frame. This is so I can see debug info and be lazy
+    for(int w=0;w<pawbuffer.size();w++){
+        paw[w+1]=paw[w]+pawbuffer[w].size()*sizeOfPow;
+        for(int i=0;i<pawbuffer[w].size();i++){
+            if(pawbuffer[w][i].size() < 14) addExtraToPOW(pawbuffer[w][i], worldCurvatures[w]);
+            for(int p=0;p<sizeOfPow;p++){
+                    paw[(int)paw[w]+sizeOfPow*i+p]=pawbuffer[w][i][p];
+            }
+        }
+    }
+    printf("%i\t%i\t%i\t%i\n",datWorldOff,datWorldMask,datIndexOff,datIndexMask);
+
     while(!glfwWindowShouldClose(window)){
         //double deltaTime=glfwGetTime();
         double time = glfwGetTime();
@@ -3002,7 +2906,7 @@ int main(){
                         dxM /= 2;
                         dxM /= 2;
                         maxStep /= 2;
-                        displacement /= 2;
+                        displacement = maxStep;
                     } else displacement -= maxStep;
                 }
                 /*
@@ -3085,6 +2989,8 @@ int main(){
             glUniform1i(glGetUniformLocation(shaderProgram, "res"),windowres/windowScale);
             glUniform1f(glGetUniformLocation(shaderProgram, "T"),T);
             //1st pass
+            float PR = player.radius;
+            glUniform1f(glGetUniformLocation(shaderProgram, "pr"),PR);
             float playerLocation[3];
             copypt(player.cord1,playerLocation);
             glUniform3fv(glGetUniformLocation(shaderProgram,"pl"),1,&playerLocation[0]);
