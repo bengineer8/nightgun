@@ -20,6 +20,8 @@
 
 
 #define positionsSize 1048576
+//#define positionsSize 7340289
+
 
 //SDL_Joystick* gGameController = NULL
 
@@ -28,7 +30,7 @@
     std::vector<float> F={E.pos1[0],E.pos1[1],E.pos1[2],E.pos2[0],E.pos2[1],E.pos2[2], E.props1, E.props2};
     return F;
 }*/
-
+bool debug = true;
 std::vector<std::vector<std::vector<float>>> pawbuffer;
 //std::vector<std::vector<std::vector<double>>> entitybuffer;//things that move around are stored with more precision
 //std::vector<std::vector<std::vector<double>>> dopgangbuf;//doppleganger buffer, used for render and collision checking copies, not used yet
@@ -37,7 +39,7 @@ float shader_data[positionsSize];
 float worldCurvs[128];//to do: make this all done in 1 batch later
 
 const double tickRate = 60;
-const float pi=3.14159265359, sr2=sqrt(2), isr2=sr2/2,ps = 0.043,pr=1.0/9.0, ped=1.0/1000, inf = 1/0.0;//player speed. player radius, portal ejection distance
+const double pi=3.14159265359, sr2=sqrt(2), isr2=sr2/2,ps = 0.043,pr=1.0/9.0, ped=1.0/1000, inf = 1/0.0;//player speed. player radius, portal ejection distance
 const double wallThickness = 1.0/36;
 const float prpwt=1.0/36+pr, prppwtc=cos(prpwt), prppwts=sin(prpwt);
 const double prc=cos(pr), prs=sin(pr), pedc=cos(ped), peds=sin(ped);
@@ -509,7 +511,7 @@ std::vector<float> h2threepointstowall(double p2[], double p3[], double p4[]){
     h2invert(m1,m2);
     matxpt(m2,p2);
     c = lidot(p2,p3);
-    std::vector<float> wall = {p1[0],p1[1],p1[2], p2[0],p2[1],p2[2], 1.0000001*c,5-m};
+    std::vector<float> wall = {p1[0],p1[1],p1[2], p2[0],p2[1],p2[2], 1.000001*c,5-m};
     return wall;
 }
 
@@ -829,6 +831,7 @@ void moveEntity(double dx, double dy, entity& E, bool& abortMove){
                 }
                 h2matto(sourcept1,transform);
                 matxpt(transform,sourcept2);
+                //printM(transform);
                 if(type > 0){
                     sourcept2[0] *= -1;
                     sourcept2[1] *= -1;
@@ -973,6 +976,7 @@ void moveEntity(double dx, double dy, entity& E, bool& abortMove){
                 double coshEr = cosh(E.radius*iaunit);
                 double coshEcolr = cosh((E.radius + wallThickness)*iaunit);
                 double coshped = cosh(ped*iaunit);
+                //*
                 while(i < paw[E.currentWorld + 1] && !inWall){
                     type = int(paw[i + 7])&7;
                     bool isWall;
@@ -1208,6 +1212,7 @@ void moveEntity(double dx, double dy, entity& E, bool& abortMove){
                 i=(int)paw[E.currentWorld];
                 bool inWall = false;
                 double cp[2];
+                //*
                 while(i < paw[E.currentWorld + 1] && !inWall){
                     type = ((char)paw[i+7])&7;
                     bool isWall = (type > 3);
@@ -1247,7 +1252,7 @@ void moveEntity(double dx, double dy, entity& E, bool& abortMove){
                             d = ped - disToCp;
                             if(isWall) d += wallThickness + E.radius;
                             else d += ped;
-                            d*=1.01;
+                            d += ped;
                             dx = E.compass[0] - E.cord1[0];
                             dy = E.compass[1] - E.cord1[1];
                             rotate(tempv[0],tempv[1],dx,-dy);
@@ -1281,14 +1286,14 @@ void moveEntity(double dx, double dy, entity& E, bool& abortMove){
                         }
                     }
                     i += sizeOfPow;
-                }
+                }//*/
             }
             //...
         } else if(iaunit > 0){//spherical
             double ds = sin(d*iaunit), dc = cos(d*iaunit);
             double cr = dot(sourcept1,sourcept2), sr = sqrt(1 - cr*cr);
             if(type < 4){
-                    s2matto(sourcept1,transform);
+                s2matto(sourcept1,transform);
                 matxpt(transform,sourcept2);
                 sourcept2[0] /= sr; sourcept2[1] /= sr;
                 rotateXY(transform, sourcept2[0],-sourcept2[1]);
@@ -1297,7 +1302,7 @@ void moveEntity(double dx, double dy, entity& E, bool& abortMove){
                     rotateXY(transform, cos(a),sin(a));
                     rotateXZ(transform, cr,sr);
                 }
-                rotateXY(transform, entranceAng[0],entranceAng[1]);
+                rotateXY(transform,entranceAng[0],entranceAng[1]);
                 if(sourceIndex == -1){
                     matxpt(transform,E.cord2,cord2Rel);
                     normalizeXY(cord2Rel);
@@ -1306,6 +1311,7 @@ void moveEntity(double dx, double dy, entity& E, bool& abortMove){
             int i = (int)paw[E.currentWorld];
             double cip2[3],cip[3];
             double cidr = s2disrank(dc,ds);
+            //*
             while(i<(int)paw[E.currentWorld + 1]){
                 double p1[3], p2[3];
                 copypt(&paw[i],p1); copypt(&paw[i+3],p2);
@@ -1369,6 +1375,7 @@ void moveEntity(double dx, double dy, entity& E, bool& abortMove){
                     else side = 1;
                     if(((dat>>23)&1)==1) {mirror = -1; E.mirror *=-1;}
                     else mirror = 1;
+                    type = char(int(paw[di+7])&3);
                     //
                     double topbot = s2side(cip2,cip1,cip);
                     entranceLoc = dot(cip,cip2);
@@ -1399,8 +1406,8 @@ void moveEntity(double dx, double dy, entity& E, bool& abortMove){
                 matxpt(itransform,E.compass);
                 backOnSphere(E.compass);
                 d = 0;
-                //
                 clearDuplicates(E);
+                //*
                 double cosEr = cos(E.radius*iaunit);
                 double cosErcol = cos( (E.radius + wallThickness)*iaunit);
                 double cosped = cos(ped*iaunit);
@@ -1445,10 +1452,11 @@ void moveEntity(double dx, double dy, entity& E, bool& abortMove){
                             type = 0;
                             sourceIndex = -1;
                             copypt(E.cord1,sourcept1);
-                            copypt(E.cord2,sourcept2);
+                            copypt(E.compass,sourcept2);
                             d = ped - acos(cosDisToCp)/iaunit;
                             if(isWall) d += wallThickness + E.radius;
                             else d += ped;
+                            //printf("%.9lf\t%.9lf\n",cosDisToCp,cosped);
                         }
                         if(!inWall && cosDisToCp > cosEr){
                             s2matto(p0,transform);
@@ -1463,6 +1471,7 @@ void moveEntity(double dx, double dy, entity& E, bool& abortMove){
                     }
                     i += sizeOfPow;
                 }
+                //*/
                 //...
             }
             //...
@@ -2359,12 +2368,63 @@ int main(){
                 {1+scale*sr2,0,0, 1,0,0, 4, mkdest(0,32,0,1,0)},
                 {-1-scale*sr2,0,0, -1,0,0, 4, mkdest(0,32,1,0,0)},
                 {0,2,0, 0,2.5,0, 2-2*cos(1.25),mkdest(0,18,21,0,0)},
+                {0,-3,0, 0,-3 + 0.890445517038,0, 4,mkdest(0,34,0,1,0)},
                 {1+2*scale*sr2,0,0, 1+2*scale*sr2+pr,0,0, 4,4},
                 {-1-2*scale*sr2,0,0, -1-2*scale*sr2+pr,0,0, 4,4},
+                {0,-3.890445517038,0, 0,-3.890445517038+pr/4,0, 4,4},
             };
             pawbuffer.push_back(world33);
             worldCurvatures.push_back(0);
         }
+        {
+            double rad = pr*1.58820897552/4;
+            double s = sinh(pi), c = cosh(pi);
+            double s2 = sinh(pi + rad), c2 = sqrt(s2*s2 + 1);
+            double p1[3] = {0,1,sr2}, p2[3];
+            copypt(p1,p2);
+            lorentz(p2[1],p2[2],cosh(rad),-sinh(rad));
+            lorentz(p1[0],p1[2],c,s);
+            lorentz(p2[0],p2[2],c,s);
+            std::vector<std::vector<float>> world34 = {
+                {0,1,0, 0,1,sr2, 2*c-1,mkdest(2,33,3,1,0)},
+                {0,1,0, 0,0,1, c,mkdest(2,35,0,0,0)},
+                {c,0,s, s,0,c, cosh(acosh(sr2)-rad),mkdest(2,34,3,1,0)},
+                {-c,0,s, -s,0,c, cosh(acosh(sr2)-rad),mkdest(2,34,2,1,0)},
+                {p1[0],p1[1],p1[2], p2[0],p2[1],p2[2], inf,4},
+                {-p1[0],p1[1],p1[2], -p2[0],p2[1],p2[2], inf,4},
+                {s,0,c, s2,0,c2, inf,4},
+                {-s,0,c, -s2,0,c2, inf,4},
+            };
+            pawbuffer.push_back(world34);
+            worldCurvatures.push_back(-1.58820897552);
+        }
+        {
+            double iaunit = 2.19736822694;
+            double c = 1.12303333653, s = 0.511081084529;
+            double c2 = 38.612436729, s2 = sqrt(c2*c2 - 1);
+            double c3 = cosh(pr*iaunit/4), s3 = sqrt(c3*c3 - 1);
+            double c4 = c, s4 = -s;
+            lorentz(s4,c4, c3,s3);
+            std::vector<std::vector<float>> world35 = {
+                {0,1,0, 0,0,1, c2,mkdest(2,34,1,0,0)},
+                {0,1,0, 0,-s,c, (c2 - 1)*c*c + 1,mkdest(2,36,0,0,0)},
+                {c2,0,s2, s2,0,c2, c,mkdest(2,35,3,1,0)},
+                {-c2,0,s2, -s2,0,c2, c,mkdest(2,35,2,1,0)},
+                {s2,0,c2, s2*c3+c2*s3,0,s2*s3+c2*c3, inf,4},
+                {-s2,0,c2, -s2*c3-c2*s3,0,s2*s3+c2*c3, inf,4},
+                {c*s2,-s,c*c2, c4*s2,s4,c4*c2, inf,4},
+                {-c*s2,-s,c*c2, -c4*s2,s4,c4*c2, inf,4},
+            };
+            pawbuffer.push_back(world35);
+            worldCurvatures.push_back(-iaunit);
+        }
+        std::vector<std::vector<float>> world36 = {
+                {0,0,-1, isr2,0,-isr2, -2,mkdest(0,35,1,0,0)},
+                {-isr2,0,-isr2, -sin(pr/4 + pi/4),0,-cos(pr/4+pi/4), -2,4},
+            };
+            pawbuffer.push_back(world36);
+            worldCurvatures.push_back(1);
+
         pw = 33;//player world
         vec3(pl,0,0,0);//player location
         //vec3(pl, -1/sqrt(3),-1/sqrt(3),-1/sqrt(3));
@@ -2672,6 +2732,7 @@ int main(){
     double dxLog[120], dyLog[120];
     int logIndex = 0;
     bool kHeld = false, lHeld = false;
+    bool oHeld = false;
     bool worldchange = false;
 
     paw[0]=pawbuffer.size()+1;//serializing, redundant to later doing it every frame. This is so I can see debug info and be lazy
@@ -2703,8 +2764,18 @@ int main(){
             if(glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) ky-=1;
             if(glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) kx+=1;//*/
             if(glfwGetKey(window, GLFW_KEY_O) == GLFW_PRESS) {
-                printE(player);
-            }
+                //
+                if(!oHeld){
+                    printE(player);
+                    dx = dy = 0;
+                    //player.currentWorld = 36;
+                    //vec3(player.cord1, -0.102784884, 0.729810155, -0.675878959);
+                    //vec3(player.cord2, -0.211591961, 0.707652604, -0.674133960);
+                    //vec3(player.compass, 0.123578543, -0.664844559, -0.736688584);
+                    //dx = 0.043000; dy =  -0.008936;
+                } else { dx = dy = 0;}
+                oHeld = true;
+            } else {oHeld = false;dx = dy = 0;}
             int logIndexp = logIndex;
             if(glfwGetKey(window, GLFW_KEY_K) == GLFW_PRESS) {
                 if(!kHeld) {logIndex--;if(logIndex < 0) logIndex = 120-1;}
@@ -2775,7 +2846,7 @@ int main(){
             const float *axes = glfwGetJoystickAxes(controllerNum, &axesCount);
             //for(int n = 0; n < axesCount; n++) printf("%f\t",axes[n]);
             //printf("\n");
-            if(axesCount > 0){
+            if(axesCount > 0 && !oHeld){
                 if(abs(axes[0]) < deadzone) axi[0] = 0;
                 else axi[0] = axes[0];
                 if(abs(axes[1]) < deadzone) axi[1] = 0;
@@ -2795,7 +2866,7 @@ int main(){
                 }
                 if(buttons[9] == GLFW_PRESS) running = true;
             }
-            else {
+            else if(!oHeld){
                 //for(int n = 0; n < 6; n++) axi[n] = 0;
                 dx = dy = 0;
             }
